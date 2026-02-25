@@ -5,13 +5,14 @@ import os
 from datetime import datetime, timedelta
 from tqdm import tqdm
 
-class Data:
+class DataProvider:
     '''
     Data provider class using LSEG API
     '''
 
-    def __init__(self, cache_file, min_market_cap, lookback_years):
+    def __init__(self, cache_file, instrument_blacklist, min_market_cap, lookback_years):
         self.cache_file = cache_file
+        self.instrument_blacklist = instrument_blacklist
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
 
@@ -37,6 +38,7 @@ class Data:
                 f'''
                 U(IN(Equity(active,public,primary))/*UNV:Public*/), 
                 TR.CompanyMarketCap(Scale=6)>={min_cap_millions}, 
+                NOT_IN(TR.InstrumentTypeCode,{self.instrument_blacklist}),
                 CURN=USD
                 '''
             )
@@ -50,9 +52,9 @@ class Data:
             print(f'Error fetching universe: {e}')
             return pd.DataFrame()
         
-    def fetch_historical_data(self):
+    def initialize_historical_data(self):
         '''
-        Fetches historical prices for a universe and caches it
+        Initializes the cache of historical prices for a universe
         Parameters:
             lookback_years: Years of historical data pulled (int)
         Return:
@@ -92,7 +94,7 @@ class Data:
         # Set historical_df
         self.historical_df = formatted_df
 
-        print(f'Successfully cached historical data with {len(formatted_df)} rows at {self.cache_file}.')
+        print(f'Successfully cached historical data with {len(formatted_df)} rows at {self.cache_file}')
 
     def update_historical_data(self):
         '''
@@ -106,7 +108,7 @@ class Data:
         # Check if the cache file exists
         if not os.path.exists(self.cache_file):
             print('Cache not found. Starting historical data download...')
-            self.fetch_historical_data()
+            self.initialize_historical_data()
             return
         
         # Check if the universe is empty
