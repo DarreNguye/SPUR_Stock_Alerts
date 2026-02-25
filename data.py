@@ -11,10 +11,12 @@ class Data:
     '''
 
     def __init__(self, cache_file, min_market_cap, lookback_years):
-        self.universe_df = pd.DataFrame()
         self.cache_file = cache_file
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
+
+        self.universe_df = None
+        self.historical_df = None
 
     def get_universe(self):
         '''
@@ -48,7 +50,7 @@ class Data:
             print(f'Error fetching universe: {e}')
             return pd.DataFrame()
         
-    def get_historical_data(self):
+    def fetch_historical_data(self):
         '''
         Fetches historical prices for a universe and caches it
         Parameters:
@@ -87,6 +89,9 @@ class Data:
         os.makedirs(os.path.dirname(self.cache_file), exist_ok = True)
         formatted_df.to_parquet(self.cache_file, engine='pyarrow', index = False)
 
+        # Set historical_df
+        self.historical_df = formatted_df
+
         print(f'Successfully cached historical data with {len(formatted_df)} rows at {self.cache_file}.')
 
     def update_historical_data(self):
@@ -101,7 +106,7 @@ class Data:
         # Check if the cache file exists
         if not os.path.exists(self.cache_file):
             print('Cache not found. Starting historical data download...')
-            self.get_historical_data()
+            self.fetch_historical_data()
             return
         
         # Check if the universe is empty
@@ -149,6 +154,9 @@ class Data:
         updated_df = pd.concat([history_df, formatted_new_df])
         updated_df.drop_duplicates(subset = ['Date', 'Ticker'], keep = 'last', inplace = True)
         updated_df.to_parquet(self.cache_file, engine = 'pyarrow', index = False)
+
+        # Set historical_df
+        self.historical_df = updated_df
 
         print(f'Cache successfully updated at {self.cache_file}. Total rows: {len(updated_df)}')
             
@@ -212,6 +220,28 @@ class Data:
         formatted_df['Date'] = pd.to_datetime(formatted_df['Date'])
         
         return formatted_df
+    
+    def load_historical_data(self):
+        '''
+        Loads data from a parquet file
+        Parameters: 
+            None
+        Returns:
+            None
+        '''
+
+        # Check if historical_df is already populated
+        if self.historical_df is not None and not self.historical_df.empty:
+            return
+
+        # Check if the file exists
+        if not os.path.exists(self.cache_file):
+            print('Cache file not found.')
+            return
+            
+        # Read parquet file
+        self.historical_df = pd.read_parquet(self.cache_file)
+        print('Loaded historical data from a parquet file.')
             
 
 
