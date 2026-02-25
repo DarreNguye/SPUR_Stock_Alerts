@@ -6,36 +6,25 @@ import lseg.data as ld
 import pandas as pd
 
 class AlertSystem:
-    def __init__(self, cache_file):
-        self.data = Data(cache_file)
-        self.analyzer = Analyzer(self.data)
+    def __init__(self, cache_file, min_market_cap, lookback_years, drop_percentile, drop_percent):
+        self.data = Data(cache_file, min_market_cap, lookback_years)
+        self.analyzer = Analyzer(self.data, drop_percentile, drop_percent)
         self.alert_manager = AlertManager()
 
     def run_scan(self):
-        # Get universe
-        
-        # Iterate across universe
-        for ticker in universe:
-            try:
-                # Check if the stock satisfies the condition
-                if not self.ta.check_price_drop_condition(ticker):
-
-                    # Send an alert
-                    continue
-
-                
-            except Exception as e:
-                # Log error and continue to next ticker
-                pass
+        pass
 
 if __name__ == "__main__":
-
-    pd.set_option('future.no_silent_downcasting', True)
 
     # Settings
     CACHE_FILE = 'data/historical_prices.parquet'
     MIN_MARKET_CAP = 5_000_000_000
     LOOKBACK_YEARS = 1
+    DROP_PERCENTILE = 0.0015
+    DROP_PERCENT = 0.20
+
+    # Handle Warnings
+    pd.set_option('future.no_silent_downcasting', True)
     
     # alert_system = AlertSystem(CACHE_FILE)
 

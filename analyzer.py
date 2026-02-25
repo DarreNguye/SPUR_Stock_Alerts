@@ -3,8 +3,10 @@ import numpy
 
 class Analyzer:
     """Handles price, distribution, and volatility math."""
-    def __init__(self, data):
+    def __init__(self, data, drop_percentile, drop_percentage):
         self.data = data
+        self.drop_percentile = drop_percentile
+        self.drop_percentage = drop_percentage
 
     def check_price_drop_condition(self, ticker: str) -> bool:
         '''
