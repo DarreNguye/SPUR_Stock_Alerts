@@ -58,7 +58,7 @@ class Data:
         if os.path.exists(self.cache_file):
             print(f'Cache already exists at {self.cache_file}. Skipping cache initialization.')
             return
-        elif self.universe_df.empty:
+        elif self.universe_df is None or self.universe_df.empty:
             print(f'Universe not defined.')
             return
         else:
@@ -94,23 +94,27 @@ class Data:
             if historical_dfs:
                 historical_df = pd.concat(historical_dfs, axis=1)
                 
-            # Format data for caching
-            historical_df = historical_df.reset_index()
-        
-            historical_formatted_df = pd.melt(
-                historical_df, 
-                id_vars=['Date'],  
-                var_name='Ticker', 
-                value_name='Close'
-            )
+                # Format data for caching
+                historical_df = historical_df.reset_index()
+            
+                historical_formatted_df = pd.melt(
+                    historical_df, 
+                    id_vars=['Date'],  
+                    var_name='Ticker', 
+                    value_name='Close'
+                )
 
-            # Clean data
-            historical_formatted_df.dropna(subset=['Close'], inplace = True)
-                
-            # Cache data
-            os.makedirs(os.path.dirname(self.cache_file), exist_ok = True)
-            historical_formatted_df.to_parquet(self.cache_file, engine='pyarrow')
-            print(f"Cached historical data with {len(historical_formatted_df)} rows at {self.cache_file}.")
+                # Clean data
+                historical_formatted_df['Close'] = pd.to_numeric(historical_formatted_df['Close'], errors='coerce')
+                historical_formatted_df.dropna(subset=['Close'], inplace = True)
+                historical_formatted_df['Date'] = pd.to_datetime(historical_formatted_df['Date'])
+                    
+                # Cache data
+                os.makedirs(os.path.dirname(self.cache_file), exist_ok = True)
+                historical_formatted_df.to_parquet(self.cache_file, engine='pyarrow', index = False)
+                print(f'Cached historical data with {len(historical_formatted_df)} rows at {self.cache_file}.')
+            else:
+                print('Failed to download historical data.')
 
 
 

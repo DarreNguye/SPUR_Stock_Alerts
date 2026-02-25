@@ -7,9 +7,9 @@ class Analyzer:
         self.data = data
 
     def check_price_drop_condition(self, ticker: str) -> bool:
-        """
-        Calculates if drop > 20% OR drop < 0.15th percentile of historical returns.
-        """
+        '''
+        Calculates if drop > 20% OR drop < 0.15th percentile of historical returns
+        '''
         # 1. Fetch historical and current prices
         # 2. Calculate daily returns distribution
         # 3. Calculate 0.15th percentile threshold
@@ -20,4 +20,11 @@ class Analyzer:
         """
         Calculates IV Rank (IVR) based on historical IV vs current IV.
         """
+        pass
+    
+    
+    def precalculate_threshold(self):
+        '''
+        Calculate the threshold for evaluating drops
+        '''
         pass

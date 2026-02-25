@@ -3,6 +3,7 @@ from analyzer import Analyzer
 from alert_manager import AlertManager
 from tqdm import tqdm
 import lseg.data as ld
+import pandas as pd
 
 class AlertSystem:
     def __init__(self, cache_file):
@@ -29,9 +30,13 @@ class AlertSystem:
 
 if __name__ == "__main__":
 
+    pd.set_option('future.no_silent_downcasting', True)
+
+    # Settings
     CACHE_FILE = 'data/historical_prices.parquet'
     MIN_MARKET_CAP = 5_000_000_000
     LOOKBACK_YEARS = 1
+    
     # alert_system = AlertSystem(CACHE_FILE)
 
     try: 
