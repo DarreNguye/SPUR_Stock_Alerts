@@ -1,9 +1,11 @@
 from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
+
 from tqdm import tqdm
 import lseg.data as ld
 import pandas as pd
+from datetime import datetime
 
 class AlertSystem:
     def __init__(self, cache_file, thresholds_file, instrument_blacklist, min_market_cap, lookback_years, drop_percentile, drop_percent):
@@ -36,7 +38,7 @@ class AlertSystem:
             self.data.update_historical_data()
             self.data.load_historical_data()
 
-            # Calculate thresholds
+            # Initialize analyzer and calculate thresholds
             self.analyzer = Analyzer(self.thresholds_file, self.data.historical_df, self.drop_percentile, self.drop_percent)
             self.analyzer.calculate_thresholds()
 
@@ -49,7 +51,55 @@ class AlertSystem:
             print('Session Closed.')
 
     def run_system(self):
-        pass
+        '''
+        Alerts any tickers that drop below set thresholds
+        Parameters:
+            None
+        Return:
+            None
+        '''
+        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
+
+        try:
+            # Connect to data provider
+            ld.open_session()
+            print('Session Opened.')
+
+            # Initialize analyzer
+            self.analyzer = Analyzer(
+                    self.thresholds_file, 
+                    None, 
+                    self.drop_percentile, 
+                    self.drop_percent
+            )
+            
+            # Load thresholds
+            self.analyzer.load_thresholds()
+
+            # Define tickers
+            tickers = list(self.analyzer.thresholds.keys())
+
+            # Check if tickers is populated
+            if not tickers:
+                print('No tickers found.')
+                return
+
+            # Get live prices
+            live_df = self.data.fetch_live_data(tickers)
+            
+            # Filter for tickers that are below the set thresholds
+            drops_df = self.analyzer.find_drops(live_df)
+            
+            # Alert user
+            self.alert_manager.process_alerts(drops_df)
+
+        except Exception as e:
+            print(f'Error during live scan: {e}')
+            
+        finally:
+            # Close connection to data provider
+            ld.close_session()
+            print('Session Closed.')
 
 if __name__ == "__main__":
 
@@ -74,4 +124,5 @@ if __name__ == "__main__":
     
     # Initialize the alert system
     alert_system = AlertSystem(CACHE_FILE, THRESHOLDS_FILE, INSTRUMENT_BLACKLIST, MIN_MARKET_CAP, LOOKBACK_YEARS, DROP_PERCENTILE, DROP_PERCENT)
-    alert_system.prep_system()
+    # alert_system.prep_system()
+    alert_system.run_system()

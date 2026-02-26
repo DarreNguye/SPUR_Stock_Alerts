@@ -291,7 +291,7 @@ class DataProvider:
             'CF_CLOSE': 'Prev_Close'
         }, inplace=True)
         live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors = 'coerce')
-        live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], error = 'coerce')
+        live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], errors = 'coerce')
         live_df.dropna(subset=['Live_Price', 'Prev_Close'], inplace=True)
 
         return live_df

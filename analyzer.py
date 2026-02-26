@@ -1,4 +1,4 @@
-import pandas
+import pandas as pd
 import numpy
 import os
 import json
@@ -68,3 +68,30 @@ class Analyzer:
         with open(self.thresholds_file, 'r') as f:
             self.thresholds = json.load(f)
         print(f'Loaded {len(self.thresholds)} thresholds into memory.')
+    
+    def find_drops(self, live_df):
+        '''
+        Calculate live returns and compare with threshold
+        Parameters:
+            live_df: Ticker, Live_Price, Prev_Close (pandas.DataFrame)
+        Return:
+            Stocks that are below the threshold (pandas.DataFrame)
+        '''
+
+        # Check if live_df has data
+        if live_df is None or live_df.empty:
+            return pd.DataFrame()
+
+        # Calculate live returns
+        live_df['Live_Return'] = (live_df['Live_Price'] - live_df['Prev_Close']) / live_df['Prev_Close']
+
+        # Map thresholds
+        live_df['Percentile_Threshold'] = live_df['Ticker'].map(self.thresholds).fillna(-self.drop_percentage)
+
+        # Filter for tickers based on set conditions
+        alerts_df = live_df[
+            (live_df['Live_Return'] <= live_df['Threshold']) | 
+            (live_df['Live_Return'] <= -self.drop_percentage)
+        ].copy()
+
+        return alerts_df
