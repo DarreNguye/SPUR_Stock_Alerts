@@ -1,10 +1,13 @@
 import pandas as pd
-import numpy
 import os
 import json
 
 class Analyzer:
-    """Handles price, distribution, and volatility math."""
+    '''
+    Ticker analysis class
+    '''
+
+
     def __init__(self, thresholds_file, data, drop_percentile, drop_percentage):
         self.thresholds_file = thresholds_file
         self.data = data

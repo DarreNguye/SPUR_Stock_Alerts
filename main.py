@@ -2,23 +2,48 @@ from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
 
-from tqdm import tqdm
 import lseg.data as ld
 import pandas as pd
 from datetime import datetime
 
+from dataclasses import dataclass
+
+@dataclass
+class AlertConfig:
+
+    # File configs
+    cache_file: str
+    thresholds_file: str
+
+    # Data configs
+    instrument_blacklist: str
+    min_market_cap: int
+    lookback_years: int
+
+    # Analysis configs
+    drop_percentile: float
+    drop_percent: float
+
+    # Email configs
+    sender_email: str
+    sender_password: str
+    to_email: str
+    
+
 class AlertSystem:
-    def __init__(self, cache_file, thresholds_file, instrument_blacklist, min_market_cap, lookback_years, drop_percentile, drop_percent):
+    def __init__(self, config: AlertConfig):
+
+        self.config = config
 
         # Save parameters
-        self.thresholds_file = thresholds_file
-        self.drop_percentile = drop_percentile
-        self.drop_percent = drop_percent
+        self.thresholds_file = config.thresholds_file
+        self.drop_percentile = config.drop_percentile
+        self.drop_percent = config.drop_percent
 
         # Initialize classes
-        self.data = DataProvider(cache_file, instrument_blacklist, min_market_cap, lookback_years)
+        self.data = DataProvider(config.cache_file, config.instrument_blacklist, config.min_market_cap, config.lookback_years)
         self.analyzer = None
-        self.alert_manager = AlertManager()
+        self.alert_manager = AlertManager(config.sender_email, config.sender_password, config.to_email)
 
     def prep_system(self):
         '''
@@ -104,26 +129,27 @@ class AlertSystem:
 
 if __name__ == "__main__":
 
-    # Files
-    CACHE_FILE = 'data/historical_prices.parquet'
-    THRESHOLDS_FILE = 'data/thresholds.json'
-
-    # Universe Settings
-    INSTRUMENT_BLACKLIST = '''
-    BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
-    FU&N,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS
-    '''
-    MIN_MARKET_CAP = 5_000_000_000
-    LOOKBACK_YEARS = 1
-
-    # Analysis Settings
-    DROP_PERCENTILE = 0.0015
-    DROP_PERCENT = 0.20
+    # Config settings
+    settings = AlertConfig(
+        cache_file = 'data/historical_prices.parquet',
+        thresholds_file = 'data/thresholds.json',
+        instrument_blacklist = '''
+        BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
+        FU&N,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS
+        ''',
+        min_market_cap = 5_000_000_000,
+        lookback_years = 1,
+        drop_percentile = 0.0015,
+        drop_percent = 0.20,
+        sender_email = '',
+        sender_password = '',
+        to_email = '',
+    )
 
     # Handle Warnings
     pd.set_option('future.no_silent_downcasting', True)
     
     # Initialize the alert system
-    alert_system = AlertSystem(CACHE_FILE, THRESHOLDS_FILE, INSTRUMENT_BLACKLIST, MIN_MARKET_CAP, LOOKBACK_YEARS, DROP_PERCENTILE, DROP_PERCENT)
+    alert_system = AlertSystem(settings)
     # alert_system.prep_system()
     alert_system.run_system()
