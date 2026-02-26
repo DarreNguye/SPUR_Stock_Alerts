@@ -66,12 +66,13 @@ class AlertSystem:
             print('Session Opened.')
 
             # Initialize analyzer
-            self.analyzer = Analyzer(
-                    self.thresholds_file, 
-                    None, 
-                    self.drop_percentile, 
-                    self.drop_percent
-            )
+            if self.analyzer is None:
+                self.analyzer = Analyzer(
+                        self.thresholds_file, 
+                        None, 
+                        self.drop_percentile, 
+                        self.drop_percent
+                )
             
             # Load thresholds
             self.analyzer.load_thresholds()
