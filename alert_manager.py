@@ -68,6 +68,13 @@ class AlertManager:
         '''
         Helper function to build an HTML email and send it
         '''
+
+        # Check if the email system is well defined
+        if not self.sender_email or not self.sender_password or not self.to_email:
+            print('Email information is missing.')
+            return
+
+        # Define the subject
         subject = f' ALERT: {len(alerts_df)} Stocks Breached Extreme Drop Thresholds'
         
         # Build an HTML Table for the email body
