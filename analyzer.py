@@ -54,6 +54,10 @@ class Analyzer:
             None
         '''
 
+        # Check if thresholds is already populated
+        if self.thresholds:
+            return
+
         # Calculate thresholds if the file does not exist
         if not os.path.exists(self.thresholds_file):
             print('Thresholds file not found. Calculating thresholds...')
