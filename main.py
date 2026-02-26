@@ -48,6 +48,9 @@ class AlertSystem:
             ld.close_session()
             print('Session Closed.')
 
+    def run_system(self):
+        pass
+
 if __name__ == "__main__":
 
     # Files

@@ -244,6 +244,58 @@ class DataProvider:
         # Read parquet file
         self.historical_df = pd.read_parquet(self.cache_file)
         print('Loaded historical data from a parquet file.')
+
+    def fetch_live_data(self, tickers):
+        '''
+        Fetch live intraday price data and the previous closing price for a list of tickers
+        Parameters:
+            tickers: Tickers to fetch prices of (list str)
+        Return:
+            Ticker, live price, and previous closing price (list pandas.DataFrame)
+        '''
+
+        # Check if tickers are provided
+        if not tickers:
+            print('No tickers provided.')
+            return pd.DataFrame()
+
+        # Chunk tickers
+        chunks = [tickers[i:i + 200] for i in range(0, len(tickers), 200)]
+        live_dfs = []
+
+        # Fetch data for chunks
+        for chunk in tqdm(chunks, desc = 'Fetching Live Prices', unit = 'chunk'):
+            try:
+                chunk_df = ld.get_data(
+                    universe=chunk,
+                    fields=['CF_LAST', 'CF_CLOSE']
+                )
+
+                # Add chunk data if it is not empty
+                if chunk_df is not None and not chunk_df.empty:
+                    live_dfs.append(chunk_df)
+
+            except Exception as e:
+                tqdm.write(f'Error fetching live pricing chunk: {e}')
+
+        # Check if data is empty
+        if not live_dfs:
+            print("Failed to fetch live pricing for all chunks.")
+            return pd.DataFrame()
+
+        # Format data
+        live_df = pd.concat(live_dfs, ignore_index=True)
+        live_df.rename(columns={
+            'Instrument': 'Ticker',
+            'CF_LAST': 'Live_Price',
+            'CF_CLOSE': 'Prev_Close'
+        }, inplace=True)
+        live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors = 'coerce')
+        live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], error = 'coerce')
+        live_df.dropna(subset=['Live_Price', 'Prev_Close'], inplace=True)
+
+        return live_df
+        
             
 
 
