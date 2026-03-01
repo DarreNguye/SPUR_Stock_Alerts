@@ -1,0 +1,4 @@
+pandas
+pyarrow
+lseg-data
+tqdm

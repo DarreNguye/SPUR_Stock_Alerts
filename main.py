@@ -5,6 +5,7 @@ from alert_manager import AlertManager
 import lseg.data as ld
 import pandas as pd
 from datetime import datetime
+import os
 
 from dataclasses import dataclass
 
@@ -141,9 +142,9 @@ if __name__ == "__main__":
         lookback_years = 1,
         drop_percentile = 0.0015,
         drop_percent = 0.20,
-        sender_email = '',
-        sender_password = '',
-        to_email = '',
+        sender_email = os.getenv('SENDER_EMAIL'),
+        sender_password = os.getenv('SENDER_PASSWORD'),
+        to_email =  os.getenv('TO_EMAIL'),
     )
 
     # Handle Warnings
@@ -151,5 +152,9 @@ if __name__ == "__main__":
     
     # Initialize the alert system
     alert_system = AlertSystem(settings)
+
+    # Run at the end of the day
     # alert_system.prep_system()
-    alert_system.run_system()
+
+    # Run during market hours
+    # alert_system.run_system()
