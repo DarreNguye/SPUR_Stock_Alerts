@@ -28,10 +28,10 @@ This system operates in two phases:
 ## Configurations
 
 Configurations can be made in the `main.py` file within the `AlertConfig` variables:
-* min_market_cap: The minimum market cap to screen (default: 5,000,000,000).
-* lookback_years: Years of historical data (default: 1).
-* drop_percentile: The percentile threshold to trigger an alert (default: 0.0015).
-* drop_percent: The significant drop in returns to trigger an alert (default: 0.20).
+* `min_market_cap`: The minimum market cap to screen (default: 5,000,000,000).
+* `lookback_years`: Years of historical data (default: 1).
+* `drop_percentile`: The percentile threshold to trigger an alert (default: 0.0015).
+* `drop_percent`: The significant drop in returns to trigger an alert (default: 0.20).
 
 ---
 
