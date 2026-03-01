@@ -4,7 +4,7 @@ import pandas as pd
 import os
 import argparse
 import time
-import datetime
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 def main():
