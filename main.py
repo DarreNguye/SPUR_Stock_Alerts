@@ -37,21 +37,20 @@ def main():
 
     # Execute prep procedure
     if args.mode == 'prep':
-        print('=== Initiating End-of-Day Batch Prep ===')
+        print('=== Initiating Prep ===')
         alert_system.prep_system()
     
     # Execute scan procedure
     elif args.mode == 'scan':
 
-        print('=== Initiating Intraday Live Scanner ===')
+        print('=== Initiating Scan ===')
 
         while True:
             now = datetime.now(ZoneInfo('America/New_York'))
 
-            # End scan on market hours
+            # End scan on market close
             if now.hour >= 16:
                 print(f"[{now.strftime('%H:%M:%S')}] Market closed. Shutting down scanner.")
-                break
             
             # Execute scan
             alert_system.run_system()
