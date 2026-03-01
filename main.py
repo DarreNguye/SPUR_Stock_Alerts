@@ -2,8 +2,13 @@ from alert_system import AlertSystem, AlertConfig
 
 import pandas as pd
 import os
+import argparse
+import time
+import datetime
+from zoneinfo import ZoneInfo
 
-if __name__ == "__main__":
+def main():
+    pd.set_option('future.no_silent_downcasting', True)
 
     # Config settings
     settings = AlertConfig(
@@ -22,14 +27,37 @@ if __name__ == "__main__":
         to_email =  os.getenv('TO_EMAIL'),
     )
 
-    # Handle Warnings
-    pd.set_option('future.no_silent_downcasting', True)
-    
-    # Initialize the alert system
+    # Initialize the system
     alert_system = AlertSystem(settings)
 
-    # Run at the end of the day
-    # alert_system.prep_system()
+    # Choose to prep or scan
+    parser = argparse.ArgumentParser(description= 'SPUR Alert System')
+    parser.add_argument('--mode', choices = ['prep', 'scan'], required = True)
+    args = parser.parse_args()
 
-    # Run during market hours
-    # alert_system.run_system()
+    # Execute prep procedure
+    if args.mode == 'prep':
+        print('=== Initiating End-of-Day Batch Prep ===')
+        alert_system.prep_system()
+    
+    # Execute scan procedure
+    elif args.mode == 'scan':
+
+        print('=== Initiating Intraday Live Scanner ===')
+
+        while True:
+            now = datetime.now(ZoneInfo('America/New_York'))
+
+            # End scan on market hours
+            if now.hour >= 16:
+                print(f"[{now.strftime('%H:%M:%S')}] Market closed. Shutting down scanner.")
+                break
+            
+            # Execute scan
+            alert_system.run_system()
+
+            # Delay
+            time.sleep(3600)
+
+if __name__ == "__main__":
+    main()
