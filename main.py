@@ -48,9 +48,16 @@ def main():
         while True:
             now = datetime.now(ZoneInfo('America/New_York'))
 
-            # End scan on market close
+            # Check if the market is open 
+            if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
+                print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
+                return
+
+            # End scan on market close and run prep for the next day
             if now.hour >= 16:
-                print(f"[{now.strftime('%H:%M:%S')}] Market closed. Shutting down scanner.")
+                print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
+                alert_system.prep_system()
+                return
             
             # Execute scan
             alert_system.run_system()
@@ -58,5 +65,5 @@ def main():
             # Delay
             time.sleep(3600)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()
