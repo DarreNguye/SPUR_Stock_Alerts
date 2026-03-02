@@ -28,7 +28,7 @@ def main():
         BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
         FU&N,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS
         ''',
-        min_market_cap = 5_000_000_000,
+        min_market_cap = 10_000_000_000,
         lookback_years = 1,
         drop_percentile = 0.0015,
         drop_percent = 0.20,
