@@ -2,4 +2,4 @@ pandas
 pyarrow
 lseg-data
 tqdm
-dotenv
+python-dotenv
