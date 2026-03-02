@@ -38,6 +38,7 @@ class DataProvider:
                 f'''
                 U(IN(Equity(active,public,primary))/*UNV:Public*/), 
                 TR.CompanyMarketCap(Scale=6)>={min_cap_millions}, 
+                IN(TR.ExchangeCountryCode,"US"),
                 NOT_IN(TR.InstrumentTypeCode,{self.instrument_blacklist}),
                 CURN=USD
                 '''
