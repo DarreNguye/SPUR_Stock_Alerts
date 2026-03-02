@@ -98,7 +98,7 @@ class AlertManager:
               <tr>
                 <td><strong>{row['Ticker']}</strong></td>
                 <td style="color: red; font-weight: bold;">{row['Live_Return']*100:.2f}%</td>
-                <td>{row['Threshold']*100:.2f}%</td>
+                <td>{row['Percentile_Threshold']*100:.2f}%</td>
                 <td>${row['Live_Price']:.2f}</td>
                 <td>${row['Prev_Close']:.2f}</td>
               </tr>
