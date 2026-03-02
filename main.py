@@ -13,6 +13,13 @@ def main():
     # Load env variables
     load_dotenv()
 
+    # Grab emails
+    raw_emails = os.getenv('TO_EMAILS')
+    if raw_emails:
+        to_emails = raw_emails.split(',')
+    else:
+        to_emails = []
+
     # Config settings
     settings = AlertConfig(
         cache_file = 'data/historical_prices.parquet',
@@ -27,7 +34,7 @@ def main():
         drop_percent = 0.20,
         sender_email = os.getenv('SENDER_EMAIL'),
         sender_password = os.getenv('SENDER_PASSWORD'),
-        to_email =  os.getenv('TO_EMAIL'),
+        to_email =  to_emails,
     )
 
     # Initialize the system

@@ -5,10 +5,10 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 class AlertManager:
-    def __init__(self, sender_email, sender_password, to_email):
+    def __init__(self, sender_email, sender_password, to_emails):
         self.sender_email = sender_email
         self.sender_password = sender_password
-        self.to_email = to_email
+        self.to_emails = to_emails
 
         # Email configurations
         self.smtp_server = "smtp.gmail.com"
@@ -31,8 +31,9 @@ class AlertManager:
         # Print to terminal
         self.print_terminal(alerts_df)
         
-        # Send an email
-        self.send_email(alerts_df)
+        # Send an email to all on the email list
+        for email in self.to_emails:
+            self.send_email(alerts_df, email)
 
     def print_terminal(self, alerts_df):
         '''
@@ -64,13 +65,18 @@ class AlertManager:
             print('-' * 55)
 
 
-    def send_email(self, alerts_df):
+    def send_email(self, alerts_df, to_email):
         '''
         Helper function to build an HTML email and send it
+        Parameters: 
+            alerts_df: Tickers to alert (pandas.DataFrame)
+            to_email: Email to send to (str)
+        Return:
+            None
         '''
 
         # Check if the email system is well defined
-        if not self.sender_email or not self.sender_password or not self.to_email:
+        if not self.sender_email or not self.sender_password or not to_email:
             print('Email information is missing.')
             return
 
@@ -114,7 +120,7 @@ class AlertManager:
         # Construct message
         msg = MIMEMultipart()
         msg['From'] = self.sender_email
-        msg['To'] = self.to_email
+        msg['To'] = to_email
         msg['Subject'] = subject
         msg.attach(MIMEText(html, 'html'))
 
@@ -123,7 +129,7 @@ class AlertManager:
             context = ssl.create_default_context()
             with smtplib.SMTP_SSL(self.smtp_server, self.smtp_port, context=context) as server:
                 server.login(self.sender_email, self.sender_password)
-                server.sendmail(self.sender_email, self.to_email, msg.as_string())
-            print("Email alert successfully sent.")
+                server.sendmail(self.sender_email, to_email, msg.as_string())
+            print(f'Email alert successfully sent to {to_email}.')
         except Exception as e:
-            print(f"Failed to send email alert: {e}")
+            print(f'Failed to send email alert: {e}')
