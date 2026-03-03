@@ -10,6 +10,7 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
 import yfscreen as yfs
+from alpaca.data.enums import DataFeed
 
 class DataProvider:
     '''
@@ -45,7 +46,8 @@ class DataProvider:
             # Pull all equities
             search_params = GetAssetsRequest(
                 asset_class = AssetClass.US_EQUITY,
-                status = 'active'
+                status = 'active',
+                feed = DataFeed.IEX
             )
             assets = self.trading_client.get_all_assets(search_params)
 
@@ -236,7 +238,8 @@ class DataProvider:
                     symbol_or_symbols = chunk,
                     timeframe = TimeFrame.Day,
                     start = start_date,
-                    end = end_date
+                    end = end_date,
+                    feed = DataFeed.IEX
                 )
                 
                 # Fetch bars and convert to a DataFrame
@@ -322,7 +325,7 @@ class DataProvider:
         for chunk in tqdm(chunks, desc = 'Fetching Live Prices', unit = 'chunk'):
             try:
                 # Get live data
-                request_params = StockSnapshotRequest(symbol_or_symbols=chunk)
+                request_params = StockSnapshotRequest(symbol_or_symbols = chunk, feed = DataFeed.IEX)
                 snapshots = self.data_client.get_stock_snapshot(request_params)
                 
                 # Format

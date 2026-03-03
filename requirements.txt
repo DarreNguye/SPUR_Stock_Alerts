@@ -4,3 +4,4 @@ alpaca-py
 tqdm
 python-dotenv
 yfscreen
+pytz
