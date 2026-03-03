@@ -12,8 +12,8 @@ This system operates in two phases:
 ## Prerequisites
 
 - **Python 3.9+**
-- **LSEG Workspace Desktop** running in the background (or valid Machine ID credentials).
 - A **Gmail Account** with an App Password generated for sending SMTP alerts.
+- **LSEG** Credentials
 
 ---
 
