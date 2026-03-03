@@ -46,7 +46,7 @@ class AlertManager:
             self.send_email(new_alerts_df, email)
 
         new_tickers = new_alerts_df['Ticker'].tolist()
-        self._save_alerted_tickers(new_tickers)
+        self.save_new_alerts(new_tickers)
 
     def print_terminal(self, alerts_df):
         '''
