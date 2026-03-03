@@ -35,7 +35,7 @@ def main():
         drop_percent = 0.20,
         sender_email = os.getenv('SENDER_EMAIL'),
         sender_password = os.getenv('SENDER_PASSWORD'),
-        to_email =  to_emails,
+        to_emails = to_emails,
     )
 
     # # Initialize data
