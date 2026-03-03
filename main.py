@@ -26,10 +26,7 @@ def main():
         cache_file = 'data/historical_prices.parquet',
         thresholds_file = 'data/thresholds.json',
         alert_log_file = 'data/alert_log.json', 
-        instrument_blacklist = '''
-        BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
-        GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS
-        ''',
+        instrument_blacklist = 'BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS',
         min_market_cap = 10_000_000_000,
         lookback_years = 1,
         drop_percentile = 0.0015,
