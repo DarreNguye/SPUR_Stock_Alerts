@@ -24,6 +24,7 @@ def main():
     settings = AlertConfig(
         cache_file = 'data/historical_prices.parquet',
         thresholds_file = 'data/thresholds.json',
+        alert_log_file = 'data/alert_log.json', 
         instrument_blacklist = '''
         BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
         FU&N,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS

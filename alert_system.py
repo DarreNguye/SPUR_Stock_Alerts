@@ -12,6 +12,7 @@ class AlertConfig:
     # File configs
     cache_file: str
     thresholds_file: str
+    alert_log_file: str
 
     # Data configs
     instrument_blacklist: str
@@ -25,7 +26,7 @@ class AlertConfig:
     # Email configs
     sender_email: str
     sender_password: str
-    to_email: str
+    to_emails: str
     
 
 class AlertSystem:
@@ -41,7 +42,7 @@ class AlertSystem:
         # Initialize classes
         self.data = DataProvider(config.cache_file, config.instrument_blacklist, config.min_market_cap, config.lookback_years)
         self.analyzer = None
-        self.alert_manager = AlertManager(config.sender_email, config.sender_password, config.to_email)
+        self.alert_manager = AlertManager(config.alert_log_file, config.sender_email, config.sender_password, config.to_emails)
 
     def prep_system(self):
         '''
@@ -64,6 +65,9 @@ class AlertSystem:
             # Initialize analyzer and calculate thresholds
             self.analyzer = Analyzer(self.thresholds_file, self.data.historical_df, self.drop_percentile, self.drop_percent)
             self.analyzer.calculate_thresholds()
+
+            # Clear logged alerts
+            self.alert_manager.clear_logged_alerts()
 
         except Exception as e:
             print(f'Error occurred: {e}')
@@ -89,13 +93,12 @@ class AlertSystem:
             print('Session Opened.')
 
             # Initialize analyzer
-            if self.analyzer is None:
-                self.analyzer = Analyzer(
-                        self.thresholds_file, 
-                        None, 
-                        self.drop_percentile, 
-                        self.drop_percent
-                )
+            self.analyzer = Analyzer(
+                    self.thresholds_file, 
+                    None, 
+                    self.drop_percentile, 
+                    self.drop_percent
+            )
             
             # Load thresholds
             self.analyzer.load_thresholds()
