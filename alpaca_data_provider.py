@@ -1,20 +1,28 @@
 import pandas as pd
-import lseg.data as ld
-from lseg.data.discovery import Screener
 import os
 from datetime import datetime, timedelta
 from tqdm import tqdm
 
+from alpaca.trading.client import TradingClient
+from alpaca.trading.requests import GetAssetsRequest
+from alpaca.trading.enums import AssetClass
+from alpaca.data.historical import StockHistoricalDataClient
+from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
+from alpaca.data.timeframe import TimeFrame
+import yfscreen as yfs
+
 class DataProvider:
     '''
-    Data provider class using LSEG API
+    Data provider class using Alpaca API
     '''
 
-    def __init__(self, cache_file, instrument_blacklist, min_market_cap, lookback_years):
+    def __init__(self, cache_file, api_key, secret_key, min_market_cap, lookback_years):
         self.cache_file = cache_file
-        self.instrument_blacklist = instrument_blacklist
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
+
+        self.trading_client = TradingClient(api_key, secret_key, paper = True)
+        self.data_client = StockHistoricalDataClient(api_key, secret_key)
 
         self.universe_df = None
         self.historical_df = None
@@ -31,27 +39,69 @@ class DataProvider:
         try:
             print("Fetching universe data...")
 
-            min_cap_millions = int(self.min_market_cap / 1_000_000)
+            # Define screen for tickers above the minimum market cap
+            screened_tickers = self.universe_screener()
 
-            # Define conditions for the universe
-            universe = Screener(
-                f'''
-                U(IN(Equity(active,public,primary))/*UNV:Public*/), 
-                TR.CompanyMarketCap(Scale=6)>={min_cap_millions}, 
-                IN(TR.ExchangeCountryCode,"US"),
-                NOT_IN(TR.InstrumentTypeCode,{self.instrument_blacklist}),
-                CURN=USD
-                '''
+            # Pull all equities
+            search_params = GetAssetsRequest(
+                asset_class = AssetClass.US_EQUITY,
+                status = 'active'
             )
+            assets = self.trading_client.get_all_assets(search_params)
 
-            # Fetch data
-            self.universe_df = ld.get_data(universe, fields = ['TR.CommonName'])
-            print("Successfuly fetched universe data.")
+            # Filter niche assets
+            all_tickers = [asset.symbol for asset in assets if asset.tradable and asset.fractionable]
+
+            # Find screened tickers with available data
+            final_tickers = list(set(screened_tickers) & set(all_tickers))
+
+            self.universe_df = pd.DataFrame({'Instrument': final_tickers})
+            print(f'Successfuly fetched universe data for {len(self.universe_df)} tickers.')
             return self.universe_df
         
         except Exception as e:
             print(f'Error fetching universe: {e}')
             return pd.DataFrame()
+
+    def universe_screener(self):
+        '''
+        Helper function that screens for US stocks above a minimum market cap
+        Parameters: 
+            None
+        Return:
+            Screened tickers (list str)
+        '''
+
+        # Define filters
+        filters = [
+            ['eq', ['region', 'us']],
+            ['gt', ['lastclosemarketcap.lasttwelvemonths', self.min_market_cap]]
+        ]
+        
+        query = yfs.create_query(filters)
+        screened_tickers = []
+        offset = 0
+        
+        # Loop through tickers and screen
+        with tqdm(desc = 'Fetching Yahoo Finance Screener', unit = ' tickers') as pbar:  
+            while True:
+                payload = yfs.create_payload('equity', query)
+                payload['offset'] = offset
+                payload['size'] = 250 
+                screened_data = yfs.get_data(payload)
+                
+                # End when finished
+                if screened_data is None or screened_data.empty:
+                    break
+                
+                # Add screened ticker
+                new_tickers = screened_data['symbol'].tolist()
+                screened_tickers.extend(new_tickers)
+
+                pbar.update(len(new_tickers))
+                offset += 250
+            
+        return screened_tickers
         
     def initialize_historical_data(self):
         '''
@@ -176,18 +226,21 @@ class DataProvider:
         '''
 
         # Chunk tickers
-        chunks = [tickers[i : i + 50] for i in range(0, len(tickers), 50)]
+        chunks = [tickers[i : i + 500] for i in range(0, len(tickers), 500)]
         
         # Fetch data for each chunk
         historical_dfs = []
         for chunk in tqdm(chunks, desc = 'Downloading History', unit= 'chunk'):
             try:
-                chunk_df = ld.get_history(
-                    universe = chunk,
-                    fields = ['TR.PriceClose'],
-                    start = start_date.strftime('%Y-%m-%d'),
-                    end = end_date.strftime('%Y-%m-%d')
+                request_params = StockBarsRequest(
+                    symbol_or_symbols = chunk,
+                    timeframe = TimeFrame.Day,
+                    start = start_date,
+                    end = end_date
                 )
+                
+                # Fetch bars and convert to a DataFrame
+                chunk_df = self.data_client.get_stock_bars(request_params).df
 
                 # Add the chunk if it is not empty
                 if chunk_df is not None and not chunk_df.empty:
@@ -208,19 +261,20 @@ class DataProvider:
         '''
            
         # Concat all data
-        raw_df = pd.concat(historical_dfs, axis=1).reset_index()
+        raw_df = pd.concat(historical_dfs)
+        raw_df.reset_index(inplace=True)
         
         # Format data
-        formatted_df = pd.melt(
-            raw_df, 
-            id_vars=['Date'],  
-            var_name='Ticker', 
-            value_name='Close'
-        )
+        raw_df.rename(columns={
+            'symbol': 'Ticker',
+            'timestamp': 'Date',
+            'close': 'Close'
+        }, inplace=True)
 
-        formatted_df['Close'] = pd.to_numeric(formatted_df['Close'], errors='coerce')
-        formatted_df.dropna(subset=['Close'], inplace=True)
-        formatted_df['Date'] = pd.to_datetime(formatted_df['Date'])
+        formatted_df = raw_df[['Ticker', 'Date', 'Close']].copy()
+        formatted_df['Close'] = pd.to_numeric(formatted_df['Close'], errors = 'coerce')
+        formatted_df.dropna(subset = ['Close'], inplace = True)
+        formatted_df['Date'] = pd.to_datetime(formatted_df['Date']).dt.tz_localize(None)
         
         return formatted_df
     
@@ -261,39 +315,37 @@ class DataProvider:
             return pd.DataFrame()
 
         # Chunk tickers
-        chunks = [tickers[i:i + 200] for i in range(0, len(tickers), 200)]
-        live_dfs = []
+        chunks = [tickers[i:i + 1000] for i in range(0, len(tickers), 1000)]
+        live_rows = []
 
         # Fetch data for chunks
         for chunk in tqdm(chunks, desc = 'Fetching Live Prices', unit = 'chunk'):
             try:
-                chunk_df = ld.get_data(
-                    universe=chunk,
-                    fields=['CF_LAST', 'CF_CLOSE']
-                )
-
-                # Add chunk data if it is not empty
-                if chunk_df is not None and not chunk_df.empty:
-                    live_dfs.append(chunk_df)
-
+                # Get live data
+                request_params = StockSnapshotRequest(symbol_or_symbols=chunk)
+                snapshots = self.data_client.get_stock_snapshot(request_params)
+                
+                # Format
+                for symbol, snapshot in snapshots.items():
+                    if snapshot and snapshot.latest_trade and snapshot.daily_bar:
+                        live_rows.append({
+                            'Ticker': symbol,
+                            'Live_Price': snapshot.latest_trade.price,     
+                            'Prev_Close': snapshot.previous_daily_bar.close     
+                        })
             except Exception as e:
                 tqdm.write(f'Error fetching live pricing chunk: {e}')
 
         # Check if data is empty
-        if not live_dfs:
+        if not live_rows:
             print("Failed to fetch live pricing for all chunks.")
             return pd.DataFrame()
 
         # Format data
-        live_df = pd.concat(live_dfs, ignore_index=True)
-        live_df.rename(columns={
-            'Instrument': 'Ticker',
-            'CF_LAST': 'Live_Price',
-            'CF_CLOSE': 'Prev_Close'
-        }, inplace=True)
+        live_df = pd.DataFrame(live_rows)
         live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors = 'coerce')
         live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], errors = 'coerce')
-        live_df.dropna(subset=['Live_Price', 'Prev_Close'], inplace=True)
+        live_df.dropna(subset = ['Live_Price', 'Prev_Close'], inplace=True)
 
         return live_df
         

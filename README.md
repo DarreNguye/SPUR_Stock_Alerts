@@ -1,6 +1,6 @@
 # SPUR Stock Alert
 
-A program that connects to the LSEG data provider and alerts the user of significant drops in tickers.
+A program that connects to the Alpaca data provider and alerts the user of significant drops in tickers.
 
 This system operates in two phases:
 
@@ -13,7 +13,7 @@ This system operates in two phases:
 
 - **Python 3.9+**
 - A **Gmail Account** with an App Password generated for sending SMTP alerts.
-- **LSEG** Credentials
+- **Alpaca** API keys.
 
 ---
 

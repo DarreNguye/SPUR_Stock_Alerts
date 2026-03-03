@@ -26,10 +26,8 @@ def main():
         cache_file = 'data/historical_prices.parquet',
         thresholds_file = 'data/thresholds.json',
         alert_log_file = 'data/alert_log.json', 
-        instrument_blacklist = '''
-        BONDFUT,BONDSPREAD,CEF,ETF,ETFA,ETFB,ETFC,ETFE,ETFM,ETFO,ETFX,ETMF,
-        FU&N,GROWUNT,HDG,INS,OPF,OPTRTS,PAIDSUBRTS,PREFERRED,PRF,RTS,SUBSRTS
-        ''',
+        api_key = os.getenv('ALPACA_API_KEY'),
+        secret_key = os.getenv('ALPACA_SECRET_KEY'),
         min_market_cap = 10_000_000_000,
         lookback_years = 1,
         drop_percentile = 0.0015,
@@ -39,16 +37,6 @@ def main():
         to_emails = to_emails,
     )
 
-    # # Initialize data
-    # session = ld.session.platform.Definition(
-    #     app_key = os.getenv('LSEG_APP_KEY'), 
-    #     grant = ld.session.platform.GrantPassword(
-    #         username = os.getenv('LSEG_USER_ID') ,
-    #         password = os.getenv('LSEG_PASSWORD')
-    #     )
-    # ).get_session()
-    # ld.session.set_default(session)
-
     # Initialize the system
     alert_system = AlertSystem(settings)
 
@@ -57,44 +45,30 @@ def main():
     parser.add_argument('--mode', choices = ['prep', 'scan'], required = True)
     args = parser.parse_args()
 
-    try:
-        # Connect to data provider
-        ld.open_session()
-        print('Session Opened.')
+    # Execute prep procedure
+    if args.mode == 'prep':
+        print('=== Initiating Prep ===')
+        alert_system.prep_system()
+    
+    # Execute scan procedure
+    elif args.mode == 'scan':
 
-        # Execute prep procedure
-        if args.mode == 'prep':
-            print('=== Initiating Prep ===')
+        print('=== Initiating Scan ===')
+        now = datetime.now(ZoneInfo('America/New_York'))
+
+        # Check if the market is open 
+        if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
+            print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
+            return
+
+        # End scan on market close and run prep for the next day
+        if now.hour >= 16:
+            print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
             alert_system.prep_system()
+            return
         
-        # Execute scan procedure
-        elif args.mode == 'scan':
-
-            print('=== Initiating Scan ===')
-            now = datetime.now(ZoneInfo('America/New_York'))
-
-            # Check if the market is open 
-            if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
-                print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
-                return
-
-            # End scan on market close and run prep for the next day
-            if now.hour >= 16:
-                print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
-                alert_system.prep_system()
-                return
-            
-            # Execute scan
-            alert_system.run_system()
-    
-    except Exception as e:
-        print(f'Error: {e}')
-    
-    finally:
-        # Close connection to data provider
-        ld.close_session()
-        print('Session Closed.')
-        
+        # Execute scan
+        alert_system.run_system()
 
 if __name__ == '__main__':
     main()

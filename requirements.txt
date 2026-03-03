@@ -1,5 +1,6 @@
 pandas
 pyarrow
-lseg-data
+alpaca-py
 tqdm
 python-dotenv
+yfscreen

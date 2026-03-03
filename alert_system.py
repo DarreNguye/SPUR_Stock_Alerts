@@ -1,4 +1,4 @@
-from data_provider import DataProvider
+from alpaca_data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
 
@@ -13,8 +13,11 @@ class AlertConfig:
     thresholds_file: str
     alert_log_file: str
 
+    # Keys
+    api_key: str
+    secret_key: str
+
     # Data configs
-    instrument_blacklist: str
     min_market_cap: int
     lookback_years: int
 
@@ -39,7 +42,7 @@ class AlertSystem:
         self.drop_percent = config.drop_percent
 
         # Initialize classes
-        self.data = DataProvider(config.cache_file, config.instrument_blacklist, config.min_market_cap, config.lookback_years)
+        self.data = DataProvider(config.cache_file, config.api_key, config.secret_key, config.min_market_cap, config.lookback_years)
         self.analyzer = None
         self.alert_manager = AlertManager(config.alert_log_file, config.sender_email, config.sender_password, config.to_emails)
 
