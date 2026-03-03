@@ -6,6 +6,7 @@ import argparse
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
+import lseg.data as ld
 
 def main():
     pd.set_option('future.no_silent_downcasting', True)
@@ -56,30 +57,44 @@ def main():
     parser.add_argument('--mode', choices = ['prep', 'scan'], required = True)
     args = parser.parse_args()
 
-    # Execute prep procedure
-    if args.mode == 'prep':
-        print('=== Initiating Prep ===')
-        alert_system.prep_system()
-    
-    # Execute scan procedure
-    elif args.mode == 'scan':
+    try:
+        # Connect to data provider
+        ld.open_session()
+        print('Session Opened.')
 
-        print('=== Initiating Scan ===')
-        now = datetime.now(ZoneInfo('America/New_York'))
-
-        # Check if the market is open 
-        if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
-            print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
-            return
-
-        # End scan on market close and run prep for the next day
-        if now.hour >= 16:
-            print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
+        # Execute prep procedure
+        if args.mode == 'prep':
+            print('=== Initiating Prep ===')
             alert_system.prep_system()
-            return
         
-        # Execute scan
-        alert_system.run_system()
+        # Execute scan procedure
+        elif args.mode == 'scan':
+
+            print('=== Initiating Scan ===')
+            now = datetime.now(ZoneInfo('America/New_York'))
+
+            # Check if the market is open 
+            if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
+                print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
+                return
+
+            # End scan on market close and run prep for the next day
+            if now.hour >= 16:
+                print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
+                alert_system.prep_system()
+                return
+            
+            # Execute scan
+            alert_system.run_system()
+    
+    except Exception as e:
+        print(f'Error: {e}')
+    
+    finally:
+        # Close connection to data provider
+        ld.close_session()
+        print('Session Closed.')
+        
 
 if __name__ == '__main__':
     main()
