@@ -55,8 +55,6 @@ def main():
     elif args.mode == 'scan':
 
         print('=== Initiating Scan ===')
-
-        # while True:
         now = datetime.now(ZoneInfo('America/New_York'))
 
         # Check if the market is open 
@@ -72,9 +70,6 @@ def main():
         
         # Execute scan
         alert_system.run_system()
-
-            # Delay
-            # time.sleep(3600)
 
 if __name__ == '__main__':
     main()
