@@ -3,10 +3,7 @@ from alert_system import AlertSystem, AlertConfig
 import pandas as pd
 import os
 import argparse
-from datetime import datetime
-from zoneinfo import ZoneInfo
 from dotenv import load_dotenv
-import lseg.data as ld
 
 def main():
     pd.set_option('future.no_silent_downcasting', True)
@@ -52,22 +49,7 @@ def main():
     
     # Execute scan procedure
     elif args.mode == 'scan':
-
         print('=== Initiating Scan ===')
-        now = datetime.now(ZoneInfo('America/New_York'))
-
-        # Check if the market is open 
-        if now.weekday() >= 5 or (now.hour < 9 or (now.hour == 9 and now.minute < 30)):
-            print(f"[{now.strftime('%H:%M:%S')}] The market is not opened. Closing program.")
-            return
-
-        # End scan on market close and run prep for the next day
-        if now.hour >= 16:
-            print(f"[{now.strftime('%H:%M:%S')}] The market is now closed. Running prep...")
-            alert_system.prep_system()
-            return
-        
-        # Execute scan
         alert_system.run_system()
 
 if __name__ == '__main__':

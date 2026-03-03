@@ -83,7 +83,7 @@ class DataProvider:
         offset = 0
         
         # Loop through tickers and screen
-        with tqdm(desc = 'Fetching Yahoo Finance Screener', unit = ' tickers') as pbar:  
+        with tqdm(desc = 'Fetching Screened tickers', unit = ' tickers') as pbar:  
             while True:
                 payload = yfs.create_payload('equity', query)
                 payload['offset'] = offset

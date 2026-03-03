@@ -4,6 +4,8 @@ from alert_manager import AlertManager
 
 from datetime import datetime
 from dataclasses import dataclass
+from zoneinfo import ZoneInfo
+import time
 
 @dataclass
 class AlertConfig:
@@ -100,14 +102,40 @@ class AlertSystem:
                 print('No tickers found.')
                 return
 
-            # Get live prices
-            live_df = self.data.fetch_live_data(tickers)
+            # While the market is open
+            while self.is_market_open():
+                now = datetime.now(ZoneInfo('America/New_York'))
+                print(f"[{now.strftime('%H:%M:%S')}] Market Open: Scanning {len(tickers)} tickers...")
+                
+                # Execute scan
+                live_df = self.data.fetch_live_data(tickers)
+                drops_df = self.analyzer.find_drops(live_df)
+                self.alert_manager.process_alerts(drops_df)
+                
+                # Add delay
+                time.sleep(60) 
             
-            # Filter for tickers that are below the set thresholds
-            drops_df = self.analyzer.find_drops(live_df)
-            
-            # Alert user
-            self.alert_manager.process_alerts(drops_df)
+            now = datetime.now(ZoneInfo('America/New_York'))
+
+            # Run prep at market close
+            if now.hour >= 16:
+                print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running daily prep...")
+                self.prep_system()
+            else:
+                print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
 
         except Exception as e:
             print(f'Error during live scan: {e}')
+
+    def is_market_open(self):
+        '''
+        Helper function to determine if the market is open
+        Parameters:
+            None
+        Return:
+            Is the market open (boolean)
+        '''
+        curr = datetime.now(ZoneInfo('America/New_York'))
+        return (curr.weekday() < 5) and (
+            (curr.hour == 9 and curr.minute >= 30) or (10 <= curr.hour < 16)
+        )
