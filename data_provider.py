@@ -34,7 +34,15 @@ class DataProvider:
             min_cap_millions = int(self.min_market_cap / 1_000_000)
 
             # Define conditions for the universe
-            universe = Screener(f'U(IN(Equity(active,public,primary))),TR.CompanyMarketCap(Scale=6)>={min_cap_millions},IN(TR.ExchangeCountryCode,"US"),NOT_IN(TR.InstrumentTypeCode,{self.instrument_blacklist}),CURN=USD')
+            universe = Screener(
+                f'''
+                U(IN(Equity(active,public,primary))/*UNV:Public*/), 
+                TR.CompanyMarketCap(Scale=6)>={min_cap_millions}, 
+                IN(TR.ExchangeCountryCode,"US"),
+                NOT_IN(TR.InstrumentTypeCode,{self.instrument_blacklist}),
+                CURN=USD
+                '''
+            )
 
             # Fetch data
             self.universe_df = ld.get_data(universe, fields = ['TR.CommonName'])
@@ -253,16 +261,16 @@ class DataProvider:
             return pd.DataFrame()
 
         # Chunk tickers
-        chunks = [tickers[i:i + 100] for i in range(0, len(tickers), 100)]
+        chunks = [tickers[i:i + 200] for i in range(0, len(tickers), 200)]
         live_dfs = []
 
         # Fetch data for chunks
         for chunk in tqdm(chunks, desc = 'Fetching Live Prices', unit = 'chunk'):
             try:
-                chunk_df = ld.content.pricing.Definition(
+                chunk_df = ld.get_data(
                     universe=chunk,
                     fields=['CF_LAST', 'CF_CLOSE']
-                ).get_data()
+                )
 
                 # Add chunk data if it is not empty
                 if chunk_df is not None and not chunk_df.empty:

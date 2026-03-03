@@ -2,6 +2,7 @@ from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
 
+import lseg.data as ld
 from datetime import datetime
 from dataclasses import dataclass
 
@@ -52,6 +53,10 @@ class AlertSystem:
             None
         '''
         try: 
+            # Connect to data provider
+            ld.open_session()
+            print('Session Opened.')
+
             # Fetch the universe and update/initialize historical data
             self.data.get_universe()
             self.data.update_historical_data()
@@ -65,7 +70,12 @@ class AlertSystem:
             self.alert_manager.clear_logged_alerts()
 
         except Exception as e:
-            print(f'Error occurred on prep: {e}')
+            print(f'Error occurred: {e}')
+
+        finally:
+            # Close connection to data provider
+            ld.close_session()
+            print('Session Closed.')
 
     def run_system(self):
         '''
@@ -78,6 +88,10 @@ class AlertSystem:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
 
         try:
+            # Connect to data provider
+            ld.open_session()
+            print('Session Opened.')
+
             # Initialize analyzer
             self.analyzer = Analyzer(
                     self.thresholds_file, 
@@ -108,3 +122,8 @@ class AlertSystem:
 
         except Exception as e:
             print(f'Error during live scan: {e}')
+            
+        finally:
+            # Close connection to data provider
+            ld.close_session()
+            print('Session Closed.')
