@@ -52,7 +52,7 @@ class DataProvider:
             assets = self.trading_client.get_all_assets(search_params)
 
             # Filter niche assets
-            all_tickers = [asset.symbol for asset in assets if asset.tradable and asset.fractionable]
+            all_tickers = [asset.symbol for asset in assets if asset.tradable]
 
             # Find screened tickers with available data
             final_tickers = list(set(screened_tickers) & set(all_tickers))
