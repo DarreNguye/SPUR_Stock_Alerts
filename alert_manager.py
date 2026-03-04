@@ -3,8 +3,6 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
-import os
-import json
 
 class AlertManager:
     def __init__(self, alert_log_file, sender_email, sender_password, to_emails):
@@ -12,6 +10,8 @@ class AlertManager:
         self.sender_email = sender_email
         self.sender_password = sender_password
         self.to_emails = to_emails
+
+        self.old_alerts = []
 
         # Email configurations
         self.smtp_server = "smtp.gmail.com"
@@ -32,8 +32,7 @@ class AlertManager:
             return
         
         # Filter for new alerts
-        old_alerts = self.load_old_alerts()
-        new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(old_alerts)]
+        new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(self.old_alerts)]
         if new_alerts_df.empty:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Drops detected, but already alerted today.")
             return
@@ -45,8 +44,9 @@ class AlertManager:
         for email in self.to_emails:
             self.send_email(new_alerts_df, email)
 
+        # Update old alerts
         new_tickers = new_alerts_df['Ticker'].tolist()
-        self.save_new_alerts(new_tickers)
+        self.old_alerts.extend(new_tickers)
 
     def print_terminal(self, alerts_df):
         '''
@@ -146,53 +146,3 @@ class AlertManager:
             print(f'Email alert successfully sent to {to_email}.')
         except Exception as e:
             print(f'Failed to send email alert: {e}')
-
-    def load_old_alerts(self):
-        '''
-        Helper function to load already alerted tickers from a JSON
-        Parameters: 
-            None
-        Return:
-            Tickers that have already been alerted (list str)
-        '''
-        
-        # Check if file exists
-        if os.path.exists(self.alert_log_file):
-            try:
-                with open(self.alert_log_file, 'r') as f:
-                    return json.load(f)
-            except json.JSONDecodeError:
-                return [] 
-        return []
-
-    def save_new_alerts(self, new_tickers):
-        '''
-        Helper function to save already alerted tickers to a JSON
-        Parameters: 
-            new_tickers: Tickers that have already been alerted (list str)
-        Return:
-            None
-        '''
-
-        # Load already alerted tickers
-        existing_tickers = self.load_old_alerts()
-        
-        # Add new tickers
-        existing_tickers.extend(new_tickers)
-        with open(self.alert_log_file, 'w') as f:
-            json.dump(existing_tickers, f, indent=4)
-    
-    def clear_logged_alerts(self):
-        '''
-        Wipes the logged alerts from the file
-        Parameters: 
-            None
-        Return:
-            None
-        '''
-
-        # Wipes the file
-        os.makedirs(os.path.dirname(self.alert_log_file), exist_ok = True)
-        with open(self.alert_log_file, 'w') as f:
-            json.dump([], f)
-        print('Successfully wiped logged alerts.')

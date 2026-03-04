@@ -66,9 +66,6 @@ class AlertSystem:
             self.analyzer = Analyzer(self.thresholds_file, self.data.historical_df, self.drop_percentile, self.drop_percent)
             self.analyzer.calculate_thresholds()
 
-            # Clear logged alerts
-            self.alert_manager.clear_logged_alerts()
-
         except Exception as e:
             print(f'Error occurred: {e}')
 
