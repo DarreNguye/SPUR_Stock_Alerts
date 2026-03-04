@@ -31,14 +31,14 @@ class AlertManager:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No extreme drops detected.")
             return
         
+        # Print to terminal
+        self.print_terminal(alerts_df)
+        
         # Filter for new alerts
         new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(self.old_alerts)]
         if new_alerts_df.empty:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Drops detected, but already alerted today.")
             return
-        
-        # Print to terminal
-        self.print_terminal(new_alerts_df)
         
         # Send an email to all on the email list
         for email in self.to_emails:
