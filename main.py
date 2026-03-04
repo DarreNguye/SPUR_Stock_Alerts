@@ -46,11 +46,13 @@ def main():
     if args.mode == 'prep':
         print('=== Initiating Prep ===')
         alert_system.prep_system()
+        print('=== Finished Prep ===')
     
     # Execute scan procedure
     elif args.mode == 'scan':
         print('=== Initiating Scan ===')
         alert_system.run_system()
+        print('=== Finished Scan ===')
 
 if __name__ == '__main__':
     main()
