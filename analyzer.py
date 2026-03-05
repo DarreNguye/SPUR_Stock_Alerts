@@ -93,7 +93,7 @@ class Analyzer:
 
         # Filter for tickers based on set conditions
         alerts_df = live_df[
-            (live_df['Live_Return'] <= live_df['Percentile_Threshold']) | 
+            (live_df['Live_Return'] <= live_df['Percentile_Threshold']) & 
             (live_df['Live_Return'] <= -self.drop_percentage)
         ].copy()
 
