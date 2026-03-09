@@ -57,7 +57,10 @@ class DataProvider:
             # Find screened tickers with available data
             final_tickers = list(set(screened_tickers) & set(all_tickers))
 
-            self.universe_df = pd.DataFrame({'Instrument': final_tickers})
+            # Filters for special derivatives
+            clean_tickers = [ticker for ticker in final_tickers if len(ticker) < 5 or (len(ticker) == 5 and ticker[-1] not in ['W', 'R', 'U', 'Q'])]
+
+            self.universe_df = pd.DataFrame({'Instrument': clean_tickers})
             print(f'Successfuly fetched universe data for {len(self.universe_df)} tickers.')
             return self.universe_df
         
