@@ -85,7 +85,7 @@ class Analyzer:
         Parameters:
             live_df: Ticker, Live_Price, Prev_Close (pandas.DataFrame)
         Return:
-            Stocks that are below the threshold (pandas.DataFrame)
+            Tickers that are below the threshold (pandas.DataFrame)
         '''
 
         # Check if live_df has data
@@ -194,5 +194,26 @@ class Analyzer:
         with open(self.volatilities_thresholds_file, 'r') as f:
             self.volatilities_thresholds = json.load(f)
         print(f'Loaded {len(self.volatilities_thresholds)} thresholds into memory.')
+
+    def find_high_iv(self, live_df):
+        '''
+        Compare live implied volatility with threshold
+        Parameters:
+            live_df: Ticker, Implied Volatility (pandas.DataFrame)
+        Return:
+            Tickers that are above the threshold (pandas.DataFrame)
+        '''
+
+        # Check if live_df has data
+        if live_df is None or live_df.empty:
+            return pd.DataFrame()
+
+        # Map thresholds
+        live_df['Percentile_Threshold'] = live_df['Ticker'].map(self.volatilities_thresholds).dropna()
+
+        # Filter for tickers based on set conditions
+        alerts_df = live_df[live_df['Implied_Volatility'] >= live_df['Percentile_Threshold']].copy()
+
+        return alerts_df
 
 
