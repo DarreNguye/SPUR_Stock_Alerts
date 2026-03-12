@@ -90,6 +90,7 @@ class AlertSystem:
                 volatility_rolling_window = self.volatility_rolling_window
                 )
             self.analyzer.calculate_returns_thresholds()
+            self.analyzer.calculate_volatilities_thresholds()
 
         except Exception as e:
             print(f'Error occurred: {e}')
