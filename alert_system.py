@@ -22,10 +22,12 @@ class AlertConfig:
     # Data configs
     min_market_cap: int
     lookback_years: int
+    volatility_rolling_window: int
 
     # Analysis configs
     drop_percentile: float
     drop_percent: float
+    volatility_percentile: float
 
     # Email configs
     sender_email: str
@@ -43,6 +45,8 @@ class AlertSystem:
         self.volatilities_thresholds_file = config.volatilities_thresholds_file
         self.drop_percentile = config.drop_percentile
         self.drop_percent = config.drop_percent
+        self.volatility_percentile = config.volatility_percentile
+        self.volatility_rolling_window = config.volatility_rolling_window
 
         # Initialize classes
         self.data = DataProvider(
@@ -81,7 +85,9 @@ class AlertSystem:
                 volatilities_thresholds_file = self.volatilities_thresholds_file,
                 price_data = self.data.prices_df, 
                 drop_percentile = self.drop_percentile, 
-                drop_percentage = self.drop_percent
+                drop_percentage = self.drop_percent,
+                volatility_percentile = self.volatility_percentile,
+                volatility_rolling_window = self.volatility_rolling_window
                 )
             self.analyzer.calculate_returns_thresholds()
 
@@ -105,7 +111,9 @@ class AlertSystem:
                 volatilities_thresholds_file = self.volatilities_thresholds_file,
                 price_data = None,
                 drop_percentile = self.drop_percentile, 
-                drop_percentage = self.drop_percent
+                drop_percentage = self.drop_percent,
+                volatility_percentile = self.volatility_percentile,
+                volatility_rolling_window = self.volatility_rolling_window
                 )
             
             # Load thresholds

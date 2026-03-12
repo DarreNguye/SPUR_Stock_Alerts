@@ -29,6 +29,8 @@ def main():
         lookback_years = 1,
         drop_percentile = 0.0015,
         drop_percent = 0.20,
+        volatility_percentile = 0.8,
+        volatility_rolling_window = 21,
         sender_email = os.getenv('SENDER_EMAIL'),
         sender_password = os.getenv('SENDER_PASSWORD'),
         to_emails = to_emails,
