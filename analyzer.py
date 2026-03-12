@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import json
+import numpy as np
 
 class Analyzer:
     '''
@@ -8,12 +9,16 @@ class Analyzer:
     '''
 
 
-    def __init__(self, returns_thresholds_file, price_data, drop_percentile, drop_percentage):
+    def __init__(self, returns_thresholds_file, volatilities_cache_file, price_data, drop_percentile, drop_percentage):
         self.returns_thresholds_file = returns_thresholds_file
+        self.volatilities_cache_file = volatilities_cache_file
+
         self.price_data = price_data
         self.drop_percentile = drop_percentile
         self.drop_percentage = drop_percentage
+
         self.returns_thresholds = {}
+        self.historical_volatilities = None
     
     def calculate_returns_thresholds(self):
         '''
@@ -110,5 +115,32 @@ class Analyzer:
         
         # Check if there is historical price data
         if self.price_data is None or self.price_data.empty:
-            print('No historical prices available to calculate thresholds.')
+            print('No historical prices available to calculate volatilities.')
             return
+        
+        print(f'Calculating historical volatility...')
+        volatility_df = self.price_data.copy()
+
+        # Sort by ticker and date
+        volatility_df.sort_values(by = ['Ticker', 'Date'], inplace = True)
+
+        # Calculate historical volatility
+        volatility_df['Log_Return'] = np.log(volatility_df['Close'] / volatility_df.groupby('Ticker')['Close'].shift(1))
+        volatility_df['Historical_Volatility'] = (
+            volatility_df.groupby('Ticker')['Log_Return']
+            .rolling(window = rolling_window)
+            .std()
+            .reset_index(level = 0, drop = True) * np.sqrt(252)
+        )
+
+        # Format
+        volatility_df.dropna(subset = ['Historical_Volatility'], inplace = True)
+        volatility_df = volatility_df[['Ticker', 'Date', 'Historical_Volatility']]
+
+        # Cache volatilities
+        os.makedirs(os.path.dirname(self.volatilities_cache_file), exist_ok = True)
+        volatility_df.to_parquet(self.volatilities_cache_file, engine = 'pyarrow', index = False)
+        
+        # Set volatilities
+        self.historical_volatilities = volatility_df
+        print(f'Successfully calculated {len(self.historical_volatilities)} volatility and saved to {self.volatilities_cache_file}.')

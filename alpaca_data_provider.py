@@ -145,7 +145,7 @@ class DataProvider:
             
         # Cache data
         os.makedirs(os.path.dirname(self.prices_cache_file), exist_ok = True)
-        formatted_df.to_parquet(self.prices_cache_file, engine='pyarrow', index = False)
+        formatted_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
 
         # Set prices_df
         self.prices_df = formatted_df

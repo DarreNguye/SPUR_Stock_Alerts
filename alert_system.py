@@ -13,6 +13,7 @@ class AlertConfig:
     # File configs
     prices_cache_file: str
     returns_thresholds_file: str
+    volatilities_cache_file : str
 
     # Keys
     api_key: str
@@ -39,6 +40,7 @@ class AlertSystem:
 
         # Save parameters
         self.returns_thresholds_file = config.returns_thresholds_file
+        self.volatilities_cache_file = config.volatilities_cache_file
         self.drop_percentile = config.drop_percentile
         self.drop_percent = config.drop_percent
 
@@ -62,7 +64,7 @@ class AlertSystem:
             self.data.load_prices_data()
 
             # Initialize analyzer and calculate thresholds
-            self.analyzer = Analyzer(self.returns_thresholds_file, self.data.prices_df, self.drop_percentile, self.drop_percent)
+            self.analyzer = Analyzer(self.returns_thresholds_file, self.volatilities_cache_file, self.data.prices_df, self.drop_percentile, self.drop_percent)
             self.analyzer.calculate_returns_thresholds()
 
         except Exception as e:
@@ -82,6 +84,7 @@ class AlertSystem:
             # Initialize analyzer
             self.analyzer = Analyzer(
                     self.returns_thresholds_file, 
+                    self.volatilities_cache_file,
                     None, 
                     self.drop_percentile, 
                     self.drop_percent
