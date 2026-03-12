@@ -5,8 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
 class AlertManager:
-    def __init__(self, alert_log_file, sender_email, sender_password, to_emails):
-        self.alert_log_file = alert_log_file
+    def __init__(self, sender_email, sender_password, to_emails):
         self.sender_email = sender_email
         self.sender_password = sender_password
         self.to_emails = to_emails

@@ -11,9 +11,8 @@ import time
 class AlertConfig:
 
     # File configs
-    cache_file: str
-    thresholds_file: str
-    alert_log_file: str
+    prices_cache_file: str
+    returns_thresholds_file: str
 
     # Keys
     api_key: str
@@ -39,32 +38,32 @@ class AlertSystem:
         self.config = config
 
         # Save parameters
-        self.thresholds_file = config.thresholds_file
+        self.returns_thresholds_file = config.returns_thresholds_file
         self.drop_percentile = config.drop_percentile
         self.drop_percent = config.drop_percent
 
         # Initialize classes
-        self.data = DataProvider(config.cache_file, config.api_key, config.secret_key, config.min_market_cap, config.lookback_years)
+        self.data = DataProvider(config.prices_cache_file, config.api_key, config.secret_key, config.min_market_cap, config.lookback_years)
         self.analyzer = None
-        self.alert_manager = AlertManager(config.alert_log_file, config.sender_email, config.sender_password, config.to_emails)
+        self.alert_manager = AlertManager(config.sender_email, config.sender_password, config.to_emails)
 
     def prep_system(self):
         '''
-        Fetches and caches historical data and calculates and stores thresholds
+        Fetches and caches historical prices and calculates and stores thresholds
         Parameters: 
             None
         Returns:
             None
         '''
         try: 
-            # Fetch the universe and update/initialize historical data
+            # Fetch the universe and update/initialize prices data
             self.data.get_universe()
-            self.data.update_historical_data()
-            self.data.load_historical_data()
+            self.data.update_prices_data()
+            self.data.load_prices_data()
 
             # Initialize analyzer and calculate thresholds
-            self.analyzer = Analyzer(self.thresholds_file, self.data.historical_df, self.drop_percentile, self.drop_percent)
-            self.analyzer.calculate_thresholds()
+            self.analyzer = Analyzer(self.returns_thresholds_file, self.data.prices_df, self.drop_percentile, self.drop_percent)
+            self.analyzer.calculate_returns_thresholds()
 
         except Exception as e:
             print(f'Error occurred: {e}')
@@ -82,17 +81,17 @@ class AlertSystem:
         try:
             # Initialize analyzer
             self.analyzer = Analyzer(
-                    self.thresholds_file, 
+                    self.returns_thresholds_file, 
                     None, 
                     self.drop_percentile, 
                     self.drop_percent
             )
             
             # Load thresholds
-            self.analyzer.load_thresholds()
+            self.analyzer.load_returns_thresholds()
 
             # Define tickers
-            tickers = list(self.analyzer.thresholds.keys())
+            tickers = list(self.analyzer.returns_thresholds.keys())
 
             # Check if tickers is populated
             if not tickers:

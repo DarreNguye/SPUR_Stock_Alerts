@@ -17,8 +17,8 @@ class DataProvider:
     Data provider class using Alpaca API
     '''
 
-    def __init__(self, cache_file, api_key, secret_key, min_market_cap, lookback_years):
-        self.cache_file = cache_file
+    def __init__(self, prices_cache_file, api_key, secret_key, min_market_cap, lookback_years):
+        self.prices_cache_file = prices_cache_file
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
 
@@ -26,7 +26,7 @@ class DataProvider:
         self.data_client = StockHistoricalDataClient(api_key, secret_key)
 
         self.universe_df = None
-        self.historical_df = None
+        self.prices_df = None
 
     def get_universe(self):
         '''
@@ -108,18 +108,18 @@ class DataProvider:
             
         return screened_tickers
         
-    def initialize_historical_data(self):
+    def initialize_prices_data(self):
         '''
         Initializes the cache of historical prices for a universe
         Parameters:
-            lookback_years: Years of historical data pulled (int)
+            None
         Return:
             None
         '''
 
         # Check if cache already exists 
-        if os.path.exists(self.cache_file):
-            print(f'Cache already exists at {self.cache_file}. Skipping cache initialization.')
+        if os.path.exists(self.prices_cache_file):
+            print(f'Cache already exists at {self.prices_cache_file}. Skipping cache initialization.')
             return
         
         # Check if the universe is empty
@@ -127,34 +127,34 @@ class DataProvider:
             print(f'Universe not defined.')
             return
         
-        print(f'Fetching and caching {self.lookback_years}-years of historical data for {len(self.universe_df)} tickers...')
+        print(f'Fetching and caching {self.lookback_years}-years of historical prices for {len(self.universe_df)} tickers...')
 
-        # Calculate historical data time frame
+        # Calculate historical prices time frame
         end_date = datetime.today()
         start_date = end_date - timedelta(days = self.lookback_years * 365)
 
         # Fetch data
         tickers = self.universe_df['Instrument'].tolist()
-        historical_dfs = self.fetch_historical_data(tickers, start_date, end_date)
+        prices_dfs = self.fetch_prices_data(tickers, start_date, end_date)
         
         # Format data for caching
-        if not historical_dfs:
-            print('Failed to download historical data.')
+        if not prices_dfs:
+            print('Failed to download historical prices.')
             return
-        formatted_df = self.format_historical_data(historical_dfs)
+        formatted_df = self.format_prices_data(prices_dfs)
             
         # Cache data
-        os.makedirs(os.path.dirname(self.cache_file), exist_ok = True)
-        formatted_df.to_parquet(self.cache_file, engine='pyarrow', index = False)
+        os.makedirs(os.path.dirname(self.prices_cache_file), exist_ok = True)
+        formatted_df.to_parquet(self.prices_cache_file, engine='pyarrow', index = False)
 
-        # Set historical_df
-        self.historical_df = formatted_df
+        # Set prices_df
+        self.prices_df = formatted_df
 
-        print(f'Successfully cached historical data with {len(formatted_df)} rows at {self.cache_file}')
+        print(f'Successfully cached historical prices with {len(formatted_df)} rows at {self.prices_cache_file}')
 
-    def update_historical_data(self):
+    def update_prices_data(self):
         '''
-        Updates the cache of historical data with new data
+        Updates the cache of prices with new data
         Parameters:
             None
         Return:
@@ -162,9 +162,9 @@ class DataProvider:
         '''
 
         # Check if the cache file exists
-        if not os.path.exists(self.cache_file):
-            print('Cache not found. Starting historical data download...')
-            self.initialize_historical_data()
+        if not os.path.exists(self.prices_cache_file):
+            print('Cache not found. Starting historical prices download...')
+            self.initialize_prices_data()
             return
         
         # Check if the universe is empty
@@ -173,7 +173,7 @@ class DataProvider:
             return
 
         # Load the existing cache
-        history_df = pd.read_parquet(self.cache_file)
+        history_df = pd.read_parquet(self.prices_cache_file)
         history_df['Date'] = pd.to_datetime(history_df['Date'])
         
         # Identify tickers in cache and new tickers
@@ -193,33 +193,33 @@ class DataProvider:
         # Fetch updated data for existing tickers
         if existing_tickers and last_cache_date.date() < end_date.date():
             print(f"Updating {len(existing_tickers)} existing tickers from {last_cache_date.strftime('%Y-%m-%d')}...")
-            updated_existing_dfs = self.fetch_historical_data(existing_tickers, last_cache_date, end_date)
+            updated_existing_dfs = self.fetch_prices_data(existing_tickers, last_cache_date, end_date)
             new_dfs.extend(updated_existing_dfs)
 
         # Fetch full history for new tickers
         if new_tickers:
             print(f'Found {len(new_tickers)} new tickers. Fetching full {self.lookback_years}-year history...')
-            new_tickers_dfs = self.fetch_historical_data(new_tickers, start_date, end_date)
+            new_tickers_dfs = self.fetch_prices_data(new_tickers, start_date, end_date)
             new_dfs.extend(new_tickers_dfs)
 
         # Format data
         if not new_dfs:
             print('Cache is already up to date. No new data downloaded.')
             return
-        formatted_new_df = self.format_historical_data(new_dfs)
+        formatted_new_df = self.format_prices_data(new_dfs)
         
         # Merge old and new data
         updated_df = pd.concat([history_df, formatted_new_df])
         updated_df.drop_duplicates(subset = ['Date', 'Ticker'], keep = 'last', inplace = True)
-        updated_df.to_parquet(self.cache_file, engine = 'pyarrow', index = False)
+        updated_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
 
-        # Set historical_df
-        self.historical_df = updated_df
+        # Set prices_df
+        self.prices_df = updated_df
 
-        print(f'Cache successfully updated at {self.cache_file}. Total rows: {len(updated_df)}')
+        print(f'Cache successfully updated at {self.prices_cache_file}. Total rows: {len(updated_df)}')
             
 
-    def fetch_historical_data(self, tickers, start_date, end_date):
+    def fetch_prices_data(self, tickers, start_date, end_date):
         '''
         Helper function to fetch data in chunks
         Parameters:
@@ -227,14 +227,14 @@ class DataProvider:
             start_date: First date of data (str)
             end_date: Last date of data (str)
         Return:
-            Historical data (list pandas.DataFrame)
+            Prices data (list pandas.DataFrame)
         '''
 
         # Chunk tickers
         chunks = [tickers[i : i + 500] for i in range(0, len(tickers), 500)]
         
         # Fetch data for each chunk
-        historical_dfs = []
+        prices_dfs = []
         for chunk in tqdm(chunks, desc = 'Downloading History', unit= 'chunk'):
             try:
                 request_params = StockBarsRequest(
@@ -250,24 +250,24 @@ class DataProvider:
 
                 # Add the chunk if it is not empty
                 if chunk_df is not None and not chunk_df.empty:
-                    historical_dfs.append(chunk_df)
+                    prices_dfs.append(chunk_df)
 
             except Exception as e:
                 tqdm.write(f'Error fetching chunk: {e}')
                 
-        return historical_dfs
+        return prices_dfs
     
-    def format_historical_data(self, historical_dfs):
+    def format_prices_data(self, prices_dfs):
         '''
-        Formats and cleans historical data
+        Formats and cleans historical prices
         Parameters:
-            historical_dfs: Data to process (list pandas.DataFrame)
+            prices_dfs: Data to process (list pandas.DataFrame)
         Return:
             Processed data (pandas.DataFrame)
         '''
            
         # Concat all data
-        raw_df = pd.concat(historical_dfs)
+        raw_df = pd.concat(prices_dfs)
         raw_df.reset_index(inplace=True)
         
         # Format data
@@ -284,7 +284,7 @@ class DataProvider:
         
         return formatted_df
     
-    def load_historical_data(self):
+    def load_prices_data(self):
         '''
         Loads data from a parquet file
         Parameters: 
@@ -293,18 +293,18 @@ class DataProvider:
             None
         '''
 
-        # Check if historical_df is already populated
-        if self.historical_df is not None and not self.historical_df.empty:
+        # Check if prices_df is already populated
+        if self.prices_df is not None and not self.prices_df.empty:
             return
 
         # Check if the file exists
-        if not os.path.exists(self.cache_file):
+        if not os.path.exists(self.prices_cache_file):
             print('Cache file not found.')
             return
             
         # Read parquet file
-        self.historical_df = pd.read_parquet(self.cache_file)
-        print('Loaded historical data from a parquet file.')
+        self.prices_df = pd.read_parquet(self.prices_cache_file)
+        print('Loaded historical prices from a parquet file.')
 
     def fetch_live_data(self, tickers):
         '''
