@@ -9,9 +9,9 @@ class Analyzer:
     '''
 
 
-    def __init__(self, returns_thresholds_file, volatilities_cache_file, price_data, drop_percentile, drop_percentage):
-        self.returns_thresholds_file = returns_thresholds_file
+    def __init__(self, volatilities_cache_file, returns_thresholds_file, price_data, drop_percentile, drop_percentage):
         self.volatilities_cache_file = volatilities_cache_file
+        self.returns_thresholds_file = returns_thresholds_file
 
         self.price_data = price_data
         self.drop_percentile = drop_percentile
