@@ -20,9 +20,9 @@ def main():
 
     # Config settings
     settings = AlertConfig(
-        volatilities_cache_file = 'data/historical_volatility.parquet',
         prices_cache_file = 'data/historical_prices.parquet',
-        returns_thresholds_file = 'data/thresholds.json',
+        returns_thresholds_file = 'data/returns_thresholds.json',
+        volatilities_thresholds_file = 'data/volatilities_thresholds.json',
         api_key = os.getenv('ALPACA_API_KEY'),
         secret_key = os.getenv('ALPACA_SECRET_KEY'),
         min_market_cap = 10_000_000_000,

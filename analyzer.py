@@ -9,9 +9,9 @@ class Analyzer:
     '''
 
 
-    def __init__(self, volatilities_cache_file, returns_thresholds_file, price_data, drop_percentile, drop_percentage):
-        self.volatilities_cache_file = volatilities_cache_file
+    def __init__(self, returns_thresholds_file, volatilities_thresholds_file, price_data, drop_percentile, drop_percentage):
         self.returns_thresholds_file = returns_thresholds_file
+        self.volatilities_thresholds_file = volatilities_thresholds_file
 
         self.price_data = price_data
         self.drop_percentile = drop_percentile
@@ -104,13 +104,13 @@ class Analyzer:
 
         return alerts_df
     
-    def calculate_rolling_volatility(self, rolling_window):
+    def calculate_historical_volatilities(self, rolling_window):
         '''
         Calculates rolling historical volatility
         Parameters:
             rolling_window: Period of historical prices to use to calculate volatility (int)
         Return:
-            None
+            Historical volatilities (pandas.DataFrame)
         '''
         
         # Check if there is historical price data
@@ -118,29 +118,26 @@ class Analyzer:
             print('No historical prices available to calculate volatilities.')
             return
         
-        print(f'Calculating historical volatility...')
-        volatility_df = self.price_data.copy()
+        print(f'Calculating historical volatilities...')
+        volatilities_df = self.price_data.copy()
 
         # Sort by ticker and date
-        volatility_df.sort_values(by = ['Ticker', 'Date'], inplace = True)
+        volatilities_df.sort_values(by = ['Ticker', 'Date'], inplace = True)
 
         # Calculate historical volatility
-        volatility_df['Log_Return'] = np.log(volatility_df['Close'] / volatility_df.groupby('Ticker')['Close'].shift(1))
-        volatility_df['Historical_Volatility'] = (
-            volatility_df.groupby('Ticker')['Log_Return']
+        volatilities_df['Log_Return'] = np.log(volatilities_df['Close'] / volatilities_df.groupby('Ticker')['Close'].shift(1))
+        volatilities_df['Historical_Volatility'] = (
+            volatilities_df.groupby('Ticker')['Log_Return']
             .rolling(window = rolling_window)
             .std()
             .reset_index(level = 0, drop = True) * np.sqrt(252)
         )
 
         # Format
-        volatility_df.dropna(subset = ['Historical_Volatility'], inplace = True)
-        volatility_df = volatility_df[['Ticker', 'Date', 'Historical_Volatility']]
+        volatilities_df.dropna(subset = ['Historical_Volatility'], inplace = True)
+        volatilities_df = volatilities_df[['Ticker', 'Date', 'Historical_Volatility']]
 
-        # Cache volatilities
-        os.makedirs(os.path.dirname(self.volatilities_cache_file), exist_ok = True)
-        volatility_df.to_parquet(self.volatilities_cache_file, engine = 'pyarrow', index = False)
-        
-        # Set volatilities
-        self.historical_volatilities = volatility_df
-        print(f'Successfully calculated {len(self.historical_volatilities)} volatility and saved to {self.volatilities_cache_file}.')
+        print(f'Successfully calculated volatilities.')
+        return volatilities_df
+
+
