@@ -131,7 +131,7 @@ class DataProvider:
         print(f'Fetching and caching {self.lookback_years}-years of historical prices for {len(self.universe_df)} tickers...')
 
         # Calculate historical prices time frame
-        end_date = datetime.today()
+        end_date = datetime.today() - timedelta(days=1) 
         start_date = end_date - timedelta(days = self.lookback_years * 365)
 
         # Fetch data
@@ -185,7 +185,7 @@ class DataProvider:
         existing_tickers = list(current_tickers & cached_tickers)
 
         # Calculate dates to pull
-        end_date = datetime.today()
+        end_date = datetime.today() - timedelta(days=1)
         last_cache_date = history_df['Date'].max()
         start_date = end_date - timedelta(days=self.lookback_years * 365)
         
@@ -337,9 +337,9 @@ class DataProvider:
                     if snapshot and snapshot.latest_trade and snapshot.daily_bar:
                         live_rows.append({
                             'Ticker': symbol,
-                            'Live_Price': snapshot.latest_trade.price,     
-                            'Prev_Close': snapshot.previous_daily_bar.close     
+                            'Live_Price': snapshot.latest_trade.price,        
                         })
+
             except Exception as e:
                 tqdm.write(f'Error fetching live pricing chunk: {e}')
 
@@ -367,7 +367,7 @@ class DataProvider:
 
         # Check if there are drops
         if drops_df is None or drops_df.empty:
-            print('No tickers provided.')
+            print('No drops provided.')
             return pd.DataFrame()
         
         # Store data

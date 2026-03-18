@@ -91,11 +91,14 @@ class Analyzer:
         # Check if live_df has data
         if live_prices_df is None or live_prices_df.empty:
             return pd.DataFrame()
+        
+        # Get previous closes
+        prev_closes = self.price_data.groupby('Ticker')['Close'].last()
+        live_prices_df['Prev_Close'] = live_prices_df['Ticker'].map(prev_closes)
+        live_prices_df.dropna(subset=['Prev_Close'], inplace=True)
 
         # Calculate live returns
         live_prices_df['Live_Return'] = (live_prices_df['Live_Price'] - live_prices_df['Prev_Close']) / live_prices_df['Prev_Close']
-
-        # Map thresholds
         live_prices_df['Returns_Threshold'] = live_prices_df['Ticker'].map(self.returns_thresholds).fillna(-self.drop_percentage)
 
         # Filter for tickers based on set conditions
