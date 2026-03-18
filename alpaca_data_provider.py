@@ -9,8 +9,9 @@ from alpaca.trading.enums import AssetClass
 from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
-import yfscreen as yfs
 from alpaca.data.enums import DataFeed
+import yfscreen as yfs
+import yfinance as yf
 
 class DataProvider:
     '''
@@ -306,13 +307,13 @@ class DataProvider:
         self.prices_df = pd.read_parquet(self.prices_cache_file)
         print('Loaded historical prices from a parquet file.')
 
-    def fetch_live_data(self, tickers):
+    def fetch_live_prices(self, tickers):
         '''
         Fetch live intraday price data and the previous closing price for a list of tickers
         Parameters:
             tickers: Tickers to fetch prices of (list str)
         Return:
-            Ticker, live price, and previous closing price (list pandas.DataFrame)
+            Ticker, live price, and previous closing price (pandas.DataFrame)
         '''
 
         # Check if tickers are provided
@@ -355,7 +356,87 @@ class DataProvider:
 
         return live_df
         
+    def fetch_live_volatilites(self, drops_df):
+        '''
+        Fetch live implied volatility data for a ATM call option expiring 30 days from now for a list of tickers
+        Parameters:
+            drops_df: Tickers and live price data from analyzer.find_drops (pandas.DataFrame)
+        Return:
+            Ticker and implied volsatility (pandas.DataFrame)
+        '''
+
+        # Check if there are drops
+        if drops_df is None or drops_df.empty:
+            print('No tickers provided.')
+            return pd.DataFrame()
+        
+        # Store data
+        final_rows = []
+
+        # Iterate through rows and and fetch implied volatility
+        for _, row in tqdm(drops_df.iterrows(), desc = 'Fetching Implied Volatility', unit = 'ticker'):
+            iv = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
+            row_dict = row.to_dict()
+
+            # Check if there implied volatility exists
+            if iv:
+                row_dict.update(iv)
+            else:
+                row_dict.update({
+                    'Expiration': None,
+                    'ATM_Strike': None,
+                    'Implied_Volatility': None
+                })
             
+            final_rows.append(row_dict)
+        
+        return pd.DataFrame(final_rows)
+
+    def fetch_live_volatility(self, ticker, live_price):
+        '''
+        Helper function to fetch live implied volatility data for a ATM call option expiring 30 days from now for a ticker
+        Parameters:
+           ticker: Ticker to pull data for (str)
+           live_price: Live price (float)
+        Return:
+            Options data with Expiration, ATM_Strike, Implied Volatility (dict)
+        '''
+        # Search for options expiries
+        symbol = yf.Ticker(ticker)
+        expirations = symbol.options
+
+        # Check if there are options
+        if not expirations:
+            print(f'No options available for {ticker}')
+            return None
+        
+        # Find the option with an expiration date closest to 30 days from now
+        today = datetime.today()
+        closest_date = expirations[0]
+        min_diff = float('inf')
+        for date_str in expirations:
+            expiration_date = datetime.strptime(date_str, '%Y-%m-%d')
+            days_diff = abs((expiration_date - today).days - 30)
+
+            if days_diff < min_diff:
+                min_diff = days_diff
+                closest_date = date_str
+        
+        # Pull options data
+        try:
+            calls = symbol.option_chain(closest_date).calls
+            calls['distance_from_price'] = abs(calls['strike'] - live_price)
+            atm_row = calls.loc[calls['distance_from_price'].idxmin()]
+
+            return {
+                'Expiration': closest_date,
+                'ATM_Strike': atm_row['strike'],
+                'Implied_Volatility': atm_row['impliedVolatility']
+            }
+
+        except Exception as e:
+            print(f'Error fetching options data for {ticker}: {e}')
+            return None
 
 
 

@@ -70,7 +70,7 @@ class AlertManager:
             
             # Format decimals into percentages
             live_return_pct = row['Live_Return'] * 100
-            threshold_pct = row['Percentile_Threshold'] * 100
+            threshold_pct = row['Returns_Threshold'] * 100
 
             print(f'{ticker:<10} | Drop: {live_return_pct:>6.2f}% | Limit: {threshold_pct:>6.2f}%')
             print(f'   Live Price: ${live_price:.2f}  (Prev Close: ${prev_close:.2f})')
@@ -116,7 +116,7 @@ class AlertManager:
               <tr>
                 <td><strong>{row['Ticker']}</strong></td>
                 <td style="color: red; font-weight: bold;">{row['Live_Return']*100:.2f}%</td>
-                <td>{row['Percentile_Threshold']*100:.2f}%</td>
+                <td>{row['Returns_Threshold']*100:.2f}%</td>
                 <td>${row['Live_Price']:.2f}</td>
                 <td>${row['Prev_Close']:.2f}</td>
               </tr>

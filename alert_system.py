@@ -119,6 +119,7 @@ class AlertSystem:
             
             # Load thresholds
             self.analyzer.load_returns_thresholds()
+            self.analyzer.load_volatilities_thresholds()
 
             # Define tickers
             tickers = list(self.analyzer.returns_thresholds.keys())
@@ -133,10 +134,20 @@ class AlertSystem:
                 now = datetime.now(ZoneInfo('America/New_York'))
                 print(f"[{now.strftime('%H:%M:%S')}] Market Open: Scanning {len(tickers)} tickers...")
                 
-                # Execute scan
-                live_df = self.data.fetch_live_data(tickers)
-                drops_df = self.analyzer.find_drops(live_df)
-                self.alert_manager.process_alerts(drops_df)
+                # Fetch live prices
+                live_prices_df = self.data.fetch_live_prices(tickers)
+
+                # Check for returns drops
+                drops_df = self.analyzer.find_drops(live_prices_df)
+                
+                # Fetch implied volatilities
+                implied_volatilities_df = self.data.fetch_live_volatilites(drops_df)
+
+                # Check for high implied volatilities
+                alerts_df = self.analyzer.find_high_iv(implied_volatilities_df)
+
+                # Send Alerts
+                self.alert_manager.process_alerts(alerts_df)
                 
                 # Add delay
                 time.sleep(60) 
