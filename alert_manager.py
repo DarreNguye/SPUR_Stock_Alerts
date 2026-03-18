@@ -3,6 +3,7 @@ import ssl
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
+import pandas as pd
 
 class AlertManager:
     def __init__(self, sender_email, sender_password, to_emails):
@@ -27,7 +28,7 @@ class AlertManager:
 
         # Check if there are tickers to alert
         if alerts_df is None or alerts_df.empty:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No extreme drops detected.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No tickers detected.")
             return
         
         # Print to terminal
@@ -36,7 +37,7 @@ class AlertManager:
         # Filter for new alerts
         new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(self.old_alerts)]
         if new_alerts_df.empty:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Drops detected, but already alerted today.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Tickers detected, but already alerted today.")
             return
         
         # Send an email to all on the email list
@@ -70,11 +71,21 @@ class AlertManager:
             
             # Format decimals into percentages
             live_return_pct = row['Live_Return'] * 100
-            threshold_pct = row['Returns_Threshold'] * 100
+            returns_threshold_pct = row['Returns_Threshold'] * 100
+            iv_pct = row['Implied_Volatility'] * 100
+            volatility_threshold_pct = row['Volatility_Threshold'] * 100
 
-            print(f'{ticker:<10} | Drop: {live_return_pct:>6.2f}% | Limit: {threshold_pct:>6.2f}%')
+            # Print info
+            print(f'{ticker:<10} | Drop:               {live_return_pct:>7.2f}% | Return Threshold:     {returns_threshold_pct:>7.2f}%')
+            print(f'{"":<10} | Implied Volatility: {iv_pct:>7.2f}% | Volatility Threshold: {volatility_threshold_pct:>7.2f}%')
             print(f'   Live Price: ${live_price:.2f}  (Prev Close: ${prev_close:.2f})')
-            print('-' * 55)
+
+            if 'Expiration' in row and 'ATM_Strike' in row and pd.notnull(row['Expiration']):
+                print(f"   Option ATM: ${row['ATM_Strike']:.2f}  (Expires: {row['Expiration']})")
+            else:
+                print("   Option ATM: N/A (No options chain available)")
+            
+            print('-' * 75)
 
 
     def send_email(self, alerts_df, to_email):
@@ -104,21 +115,37 @@ class AlertManager:
               <tr style="background-color: #f2f2f2;">
                 <th>Ticker</th>
                 <th>Live Drop</th>
-                <th>Threshold</th>
+                <th>Return Threshold</th>
+                <th>Implied Volatility</th>
+                <th>Volatility Threshold</th>
                 <th>Live Price</th>
                 <th>Prev Close</th>
+                <th>Option Expiration</th>
+                <th>ATM Strike</th>
               </tr>
         '''
         
         # Add a row for each ticker
         for _, row in alerts_df.iterrows():
+
+            # Extract options data
+            expiration = row.get('Expiration')
+            atm_strike = row.get('ATM_Strike')
+            
+            exp_display = expiration if pd.notnull(expiration) else 'N/A'
+            strike_display = f'${atm_strike:.2f}' if pd.notnull(atm_strike) else 'N/A'
+
             html += f"""
               <tr>
                 <td><strong>{row['Ticker']}</strong></td>
                 <td style="color: red; font-weight: bold;">{row['Live_Return']*100:.2f}%</td>
                 <td>{row['Returns_Threshold']*100:.2f}%</td>
+                <td style="color: green; font-weight: bold;">{row['Implied_Volatility']*100:.2f}%</td>
+                <td>{row['Volatility_Threshold']*100:.2f}%</td>
                 <td>${row['Live_Price']:.2f}</td>
                 <td>${row['Prev_Close']:.2f}</td>
+                <td>{exp_display}</td>
+                <td>{strike_display}</td>
               </tr>
             """
             
