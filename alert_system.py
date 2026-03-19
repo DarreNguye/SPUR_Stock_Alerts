@@ -1,6 +1,7 @@
 from alpaca_data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
+from statistics import DailyStats
 
 from datetime import datetime
 from dataclasses import dataclass
@@ -13,7 +14,8 @@ class AlertConfig:
     # File configs
     prices_cache_file: str
     returns_thresholds_file: str
-    volatilities_thresholds_file : str
+    volatilities_thresholds_file: str
+    stats_cache_file: str
 
     # Keys
     api_key: str
@@ -40,9 +42,12 @@ class AlertSystem:
 
         self.config = config
 
-        # Save parameters
+        # Save files
         self.returns_thresholds_file = config.returns_thresholds_file
         self.volatilities_thresholds_file = config.volatilities_thresholds_file
+        self.stats_cache_file = config.stats_cache_file
+
+        # Save parameters
         self.drop_percentile = config.drop_percentile
         self.drop_percent = config.drop_percent
         self.volatility_percentile = config.volatility_percentile
@@ -56,14 +61,15 @@ class AlertSystem:
             min_market_cap = config.min_market_cap, 
             lookback_years = config.lookback_years
             )
-        
-        self.analyzer = None
 
         self.alert_manager = AlertManager(
             sender_email = config.sender_email, 
             sender_password = config.sender_password, 
             to_emails = config.to_emails
             )
+        
+        self.analyzer = None
+        self.daily_stats = None
 
     def prep_system(self):
         '''
@@ -106,7 +112,7 @@ class AlertSystem:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
 
         try:
-            # Initialize analyzer
+            # Initialize analyzer and statistics tracker
             self.analyzer = Analyzer(
                 returns_thresholds_file = self.returns_thresholds_file, 
                 volatilities_thresholds_file = self.volatilities_thresholds_file,
@@ -116,6 +122,8 @@ class AlertSystem:
                 volatility_percentile = self.volatility_percentile,
                 volatility_rolling_window = self.volatility_rolling_window
                 )
+            
+            self.daily_stats = DailyStats()
             
             # Load thresholds
             self.analyzer.load_returns_thresholds()
@@ -144,19 +152,30 @@ class AlertSystem:
                 implied_volatilities_df = self.data.fetch_live_volatilites(drops_df)
 
                 # Check for high implied volatilities
-                alerts_df = self.analyzer.find_high_iv(implied_volatilities_df)
+                high_iv_df = self.analyzer.find_high_iv(implied_volatilities_df)
 
                 # Send Alerts
-                self.alert_manager.process_alerts(alerts_df)
+                new_alerts = self.alert_manager.process_alerts(high_iv_df)
+
+                # Update stats if there is meaningful information
+                if not drops_df.empty or not high_iv_df.empty or len(new_alerts) > 0:
+                    self.daily_stats.append({
+                        'Time': now,
+                        'Universe_Count': len(tickers),
+                        'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
+                        'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
+                        'Alerts': new_alerts
+                    })
                 
                 # Add delay
                 time.sleep(60) 
             
             now = datetime.now(ZoneInfo('America/New_York'))
 
-            # Run prep at market close
+            # Save statistics and run prep at market close
             if now.hour >= 16:
-                print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running daily prep...")
+                print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
+                self.daily_stats.save_stats(self.stats_cache_file)
                 self.prep_system()
             else:
                 print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")

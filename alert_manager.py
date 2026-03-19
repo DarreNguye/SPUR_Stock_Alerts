@@ -6,6 +6,10 @@ from datetime import datetime
 import pandas as pd
 
 class AlertManager:
+    '''
+    Alert manager class using email
+    '''
+
     def __init__(self, sender_email, sender_password, to_emails):
         self.sender_email = sender_email
         self.sender_password = sender_password
@@ -23,13 +27,13 @@ class AlertManager:
         Parameters:
             alerts_df: Tickers to alert (pandas.DataFrame)
         Return:
-            None
+            New tickers (pandas.DataFrame)
         '''
 
         # Check if there are tickers to alert
         if alerts_df is None or alerts_df.empty:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No tickers detected.")
-            return
+            return []
         
         # Print to terminal
         self.print_terminal(alerts_df)
@@ -38,7 +42,7 @@ class AlertManager:
         new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(self.old_alerts)]
         if new_alerts_df.empty:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Tickers detected, but already alerted today.")
-            return
+            return []
         
         # Send an email to all on the email list
         for email in self.to_emails:
@@ -47,6 +51,8 @@ class AlertManager:
         # Update old alerts
         new_tickers = new_alerts_df['Ticker'].tolist()
         self.old_alerts.extend(new_tickers)
+
+        return new_tickers
 
     def print_terminal(self, alerts_df):
         '''

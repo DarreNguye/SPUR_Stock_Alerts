@@ -8,7 +8,6 @@ class Analyzer:
     Ticker analysis class
     '''
 
-
     def __init__(self, returns_thresholds_file, volatilities_thresholds_file, price_data, drop_percentile, drop_percentage, volatility_percentile, volatility_rolling_window):
         self.returns_thresholds_file = returns_thresholds_file
         self.volatilities_thresholds_file = volatilities_thresholds_file
