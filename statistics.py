@@ -5,16 +5,16 @@ from zoneinfo import ZoneInfo
 
 class DailyStats:
     '''
-    Daily scan statistics
+    Daily scan statistics class
     '''
     def __init__(self):
         self.data = []
     
-    def save_stats(self, file):
+    def save_stats(self, file_name):
         '''
         Saves daily stats to a json file
         Parameters:
-            file: File to save to (str)
+            file_name: File to save to (str)
         Returns:
             None
         '''
@@ -25,16 +25,13 @@ class DailyStats:
             print(f'Daily statistics are missing for {today}.')
             return
 
-        os.makedirs(os.path.dirname(file), exist_ok = True)
+        os.makedirs(os.path.dirname(file_name), exist_ok = True)
 
         # Read existing data
         existing_stats = {}
-        if os.path.exists(file):
-            try:   
-                with open(file, 'r') as f:
+        if os.path.exists(file_name):
+                with open(file_name, 'r') as f:
                     existing_stats = json.load(f)
-            except Exception as e:
-                print(f'Error opening file: {file}. Starting with a blank file.')
 
         # Ensure today is not already in the file then add stats
         if today in existing_stats:
@@ -43,7 +40,7 @@ class DailyStats:
             existing_stats[today] = self.data
 
         # Cache
-        with open(file, 'w') as f:
+        with open(file_name, 'w') as f:
             json.dump(existing_stats, f, indent = 4)
 
         print(f'Successfully saved daily statistics for {today}.')

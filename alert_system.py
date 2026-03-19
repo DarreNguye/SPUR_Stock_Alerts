@@ -155,16 +155,16 @@ class AlertSystem:
                 high_iv_df = self.analyzer.find_high_iv(implied_volatilities_df)
 
                 # Send Alerts
-                new_alerts = self.alert_manager.process_alerts(high_iv_df)
+                new_alerts_df = self.alert_manager.process_alerts(high_iv_df)
 
                 # Update stats if there is meaningful information
-                if not drops_df.empty or not high_iv_df.empty or len(new_alerts) > 0:
+                if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
                     self.daily_stats.append({
-                        'Time': now,
+                        'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
                         'Universe_Count': len(tickers),
                         'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
                         'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
-                        'Alerts': new_alerts
+                        'Alerts': new_alerts_df.to_dict(orient='records') if not new_alerts_df.empty else []
                     })
                 
                 # Add delay

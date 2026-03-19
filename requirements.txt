@@ -7,3 +7,4 @@ yfscreen
 pytz
 numpy
 yfinance
+streamlit
