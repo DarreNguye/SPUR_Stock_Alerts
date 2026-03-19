@@ -112,11 +112,15 @@ class AlertSystem:
         print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
 
         try:
+
+            # Load prices data
+            self.data.load_prices_data()
+
             # Initialize analyzer and statistics tracker
             self.analyzer = Analyzer(
                 returns_thresholds_file = self.returns_thresholds_file, 
                 volatilities_thresholds_file = self.volatilities_thresholds_file,
-                price_data = None,
+                price_data = self.data.prices_df,
                 drop_percentile = self.drop_percentile, 
                 drop_percentage = self.drop_percent,
                 volatility_percentile = self.volatility_percentile,
@@ -159,7 +163,7 @@ class AlertSystem:
 
                 # Update stats if there is meaningful information
                 if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
-                    self.daily_stats.append({
+                    self.daily_stats.data.append({
                         'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
                         'Universe_Count': len(tickers),
                         'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],

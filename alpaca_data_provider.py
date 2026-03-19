@@ -351,8 +351,7 @@ class DataProvider:
         # Format data
         live_df = pd.DataFrame(live_rows)
         live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors = 'coerce')
-        live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], errors = 'coerce')
-        live_df.dropna(subset = ['Live_Price', 'Prev_Close'], inplace=True)
+        live_df.dropna(subset = ['Live_Price'], inplace=True)
 
         return live_df
         
@@ -374,7 +373,7 @@ class DataProvider:
         final_rows = []
 
         # Iterate through rows and and fetch implied volatility
-        for _, row in tqdm(drops_df.iterrows(), desc = 'Fetching Implied Volatility', unit = 'ticker'):
+        for _, row in tqdm(drops_df.iterrows(), desc = 'Fetching Implied Volatility', unit = ' ticker'):
             iv = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
             row_dict = row.to_dict()
 
@@ -407,7 +406,7 @@ class DataProvider:
 
         # Check if there are options
         if not expirations:
-            print(f'No options available for {ticker}')
+            tqdm.write(f'No options available for {ticker}')
             return None
         
         # Find the option with an expiration date closest to 30 days from now
@@ -435,7 +434,7 @@ class DataProvider:
             }
 
         except Exception as e:
-            print(f'Error fetching options data for {ticker}: {e}')
+            tqdm.write(f'Error fetching options data for {ticker}: {e}')
             return None
 
 

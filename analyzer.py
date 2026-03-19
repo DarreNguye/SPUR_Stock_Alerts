@@ -89,6 +89,12 @@ class Analyzer:
 
         # Check if live_df has data
         if live_prices_df is None or live_prices_df.empty:
+            print('No live prices available.')
+            return pd.DataFrame()
+        
+        # Check if price_data has data
+        if self.price_data is None or self.price_data.empty:
+            print('No historical prices available.')
             return pd.DataFrame()
         
         # Get previous closes
@@ -106,6 +112,7 @@ class Analyzer:
             (live_prices_df['Live_Return'] <= -self.drop_percentage)
         ].copy()
 
+        print(f'Identified {len(drops_df)} drops.')
         return drops_df
     
     def calculate_historical_volatilities(self, volatility_rolling_window):
@@ -217,8 +224,9 @@ class Analyzer:
         drops_df.dropna(subset = ['Volatility_Threshold', 'Implied_Volatility'], inplace = True)
 
         # Filter for tickers based on set conditions
-        alerts_df = drops_df[drops_df['Implied_Volatility'] >= drops_df['Volatility_Threshold']].copy()
+        high_iv_df = drops_df[drops_df['Implied_Volatility'] >= drops_df['Volatility_Threshold']].copy()
 
-        return alerts_df
+        print(f'Identified {len(high_iv_df)} high IVs.')
+        return high_iv_df
 
 
