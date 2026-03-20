@@ -7,14 +7,15 @@ class DailyStats:
     '''
     Daily scan statistics class
     '''
-    def __init__(self):
+    def __init__(self, alert_system):
+        self.alert_system = alert_system
         self.data = []
     
-    def save_stats(self, file_name):
+    def save_stats(self):
         '''
         Saves daily stats to a json file
         Parameters:
-            file_name: File to save to (str)
+            None
         Returns:
             None
         '''
@@ -25,22 +26,32 @@ class DailyStats:
             print(f'Daily statistics are missing for {today}.')
             return
 
-        os.makedirs(os.path.dirname(file_name), exist_ok = True)
+        os.makedirs(os.path.dirname(self.alert_system.stats_cache_file), exist_ok = True)
 
         # Read existing data
         existing_stats = {}
-        if os.path.exists(file_name):
-                with open(file_name, 'r') as f:
+        if os.path.exists(self.alert_system.stats_cache_file):
+                with open(self.alert_system.stats_cache_file, 'r') as f:
                     existing_stats = json.load(f)
 
-        # Ensure today is not already in the file then add stats
-        if today in existing_stats:
-            existing_stats[today].extend(self.data)
-        else:  
-            existing_stats[today] = self.data
+        # Check if today is in the existing data
+        if today not in existing_stats:
+            existing_stats[today] = {
+                'Metadata': { 
+                    'Min_Market_Cap': self.alert_system.min_market_cap,
+                    'Drop_Percent': self.alert_system.drop_percent,
+                    'Drop_Percentile': self.alert_system.drop_percentile,
+                    'Volatility_Percentile': self.alert_system.volatility_percentile,
+                    'Volatility_Window': self.alert_system.volatility_rolling_window,
+                },
+                'Scans': []
+            }
+
+        # Append data from today
+        existing_stats[today]['Scans'].extend(self.data)
 
         # Cache
-        with open(file_name, 'w') as f:
+        with open(self.alert_system.stats_cache_file, 'w') as f:
             json.dump(existing_stats, f, indent = 4)
 
         print(f'Successfully saved daily statistics for {today}.')

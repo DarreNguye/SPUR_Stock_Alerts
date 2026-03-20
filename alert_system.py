@@ -48,6 +48,7 @@ class AlertSystem:
         self.stats_cache_file = config.stats_cache_file
 
         # Save parameters
+        self.min_market_cap = config.min_market_cap
         self.drop_percentile = config.drop_percentile
         self.drop_percent = config.drop_percent
         self.volatility_percentile = config.volatility_percentile
@@ -127,7 +128,7 @@ class AlertSystem:
                 volatility_rolling_window = self.volatility_rolling_window
                 )
             
-            self.daily_stats = DailyStats()
+            self.daily_stats = DailyStats(self)
             
             # Load thresholds
             self.analyzer.load_returns_thresholds()
@@ -179,7 +180,7 @@ class AlertSystem:
             # Save statistics and run prep at market close
             if now.hour >= 16:
                 print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
-                self.daily_stats.save_stats(self.stats_cache_file)
+                self.daily_stats.save_stats()
                 self.prep_system()
             else:
                 print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
