@@ -166,8 +166,8 @@ class AlertSystem:
                     self.daily_stats.data.append({
                         'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
                         'Universe_Count': len(tickers),
-                        'Drop_Tickers': drops_df.to_dict(orient='records') if not drops_df.empty else [],
-                        'High_IV_Tickers': high_iv_df.to_dict(orient='records') if not high_iv_df.empty else [],
+                        'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
+                        'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
                         'Alerts': new_alerts_df.to_dict(orient='records') if not new_alerts_df.empty else []
                     })
                 
