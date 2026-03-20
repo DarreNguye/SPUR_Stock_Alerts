@@ -245,6 +245,6 @@ class SystemStats:
 if __name__ == '__main__':
     stats_cache_file = 'data/system_data.json'
     dashboard = SystemStats(stats_cache_file)
-    # dashboard.display_stats()
+    dashboard.display_stats()
 
 
