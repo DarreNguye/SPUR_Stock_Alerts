@@ -53,8 +53,8 @@ class AlertSystem:
         # Initialize classes
         self.data = DataProvider(
             prices_cache_file = config.prices_cache_file, 
-            data_api_key = config.data_api_key, 
-            data_secret_key = config.data_secret_key, 
+            api_key = config.data_api_key, 
+            secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
             lookback_years = config.lookback_years
             )
