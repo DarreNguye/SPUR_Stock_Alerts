@@ -15,8 +15,6 @@ class AlertManager:
         self.sender_password = sender_password
         self.to_emails = to_emails
 
-        self.old_alerts = []
-
         # Email configurations
         self.smtp_server = "smtp.gmail.com"
         self.smtp_port = 465 
@@ -27,32 +25,19 @@ class AlertManager:
         Parameters:
             alerts_df: Tickers to alert (pandas.DataFrame)
         Return:
-            New tickers (pandas.DataFrame)
+            None
         '''
 
         # Check if there are tickers to alert
         if alerts_df is None or alerts_df.empty:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No tickers detected.")
-            return pd.DataFrame()
+            return
         
         # Print to terminal
         self.print_terminal(alerts_df)
         
-        # Filter for new alerts
-        new_alerts_df = alerts_df[~alerts_df['Ticker'].isin(self.old_alerts)]
-        if new_alerts_df.empty:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Tickers detected, but already alerted today.")
-            return pd.DataFrame()
-        
         # Send an email to all on the email list
         for email in self.to_emails:
-            self.send_email(new_alerts_df, email)
-
-        # Update old alerts
-        new_tickers = new_alerts_df['Ticker'].tolist()
-        self.old_alerts.extend(new_tickers)
-
-        return new_alerts_df
+            self.send_email(alerts_df, email)
 
     def print_terminal(self, alerts_df):
         '''

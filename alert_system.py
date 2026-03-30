@@ -7,6 +7,7 @@ from datetime import datetime
 from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 import time
+import pandas as pd
 
 @dataclass
 class AlertConfig:
@@ -141,6 +142,9 @@ class AlertSystem:
             if not tickers:
                 print('No tickers found.')
                 return
+            
+            # Store already alerted tickers
+            old_alerts = []
 
             # While the market is open
             while self.is_market_open():
@@ -153,14 +157,17 @@ class AlertSystem:
                 # Check for returns drops
                 drops_df = self.analyzer.find_drops(live_prices_df)
                 
-                # Fetch implied volatilities
+                # Fetch IV
                 implied_volatilities_df = self.data.fetch_live_volatilites(drops_df)
 
-                # Check for high implied volatilities
+                # Check for high IV
                 high_iv_df = self.analyzer.find_high_iv(implied_volatilities_df)
 
-                # Send Alerts
-                new_alerts_df = self.alert_manager.process_alerts(high_iv_df)
+                # Filter for new alerts
+                new_alerts_df = self.filter_new_alerts(high_iv_df, old_alerts)
+                
+                # Send alerts
+                self.alert_manager.process_alerts(new_alerts_df)
 
                 # Update stats if there is meaningful information
                 if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
@@ -199,3 +206,29 @@ class AlertSystem:
         return (curr.weekday() < 5) and (
             (curr.hour == 9 and curr.minute >= 30) or (10 <= curr.hour < 16)
         )
+    
+    def filter_new_alerts(self, alerts_in, old_alerts):
+        '''
+        Helper function to filter for only new alerts
+        Parameters:
+            alerts_in: Alerts to be filtered (pandas.DataFrame)
+            old_alerts: Tickers already alerted (list of str)
+        Return:
+            New alerts (pandas.DataFrame)
+        '''
+
+        # Check if there are alerts in
+        if alerts_in.empty:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: No tickers detected.")
+            return pd.DataFrame()
+                
+        # Filter for new alerts
+        new_alerts_df = alerts_in[~alerts_in['Ticker'].isin(old_alerts)]
+
+        # Update old alerts or 
+        if not new_alerts_df.empty:
+            old_alerts.extend(new_alerts_df['Ticker'].tolist())
+        else:
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Tickers detected, but already alerted today.")
+
+        return new_alerts_df
