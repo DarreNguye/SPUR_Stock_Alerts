@@ -44,6 +44,7 @@ class DailyStats:
                     'Drop_Percentile': self.config.drop_percentile,
                     'Volatility_Percentile': self.config.volatility_percentile,
                     'Volatility_Window': self.config.volatility_rolling_window,
+                    'Temperature': self.config.temperature,
                 },
                 'Scans': []
             }
