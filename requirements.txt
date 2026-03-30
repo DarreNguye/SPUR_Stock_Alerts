@@ -9,4 +9,3 @@ numpy
 yfinance
 streamlit
 google-genai
-textwrap
