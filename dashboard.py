@@ -156,14 +156,12 @@ class SystemStats:
 
            column_order = [
                'Time', 
-               'Universe_Count', 
                'Drop_Tickers', 
                'High_IV_Tickers'
            ],
            
            column_config = {
                'Time': 'Time',
-               'Universe_Count': 'Universe Count',
                'Drop_Tickers': 'Drop Tickers',
                'High_IV_Tickers': 'High IV Tickers'
            }

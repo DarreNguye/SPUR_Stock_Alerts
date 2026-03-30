@@ -11,11 +11,11 @@ class DailyStats:
         self.alert_system = alert_system
         self.data = []
     
-    def save_stats(self):
+    def save_stats(self, universe_count):
         '''
         Saves daily stats to a json file
         Parameters:
-            None
+            universe_count: number of tickers in the universe (int)
         Returns:
             None
         '''
@@ -39,6 +39,7 @@ class DailyStats:
             existing_stats[today] = {
                 'Metadata': { 
                     'Min_Market_Cap': self.alert_system.min_market_cap,
+                    'Universe_Count': universe_count,
                     'Drop_Percent': self.alert_system.drop_percent,
                     'Drop_Percentile': self.alert_system.drop_percentile,
                     'Volatility_Percentile': self.alert_system.volatility_percentile,
