@@ -2,6 +2,7 @@ from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
 from statistics import DailyStats
+from valuation_agent import ValuationAgent
 
 from datetime import datetime
 from dataclasses import dataclass
@@ -12,15 +13,16 @@ import pandas as pd
 @dataclass
 class AlertConfig:
 
-    # File configs
+    # Files
     prices_cache_file: str
     returns_thresholds_file: str
     volatilities_thresholds_file: str
     stats_cache_file: str
 
     # Keys
-    api_key: str
-    secret_key: str
+    data_api_key: str
+    data_secret_key: str
+    ai_api_key: str
 
     # Data configs
     min_market_cap: int
@@ -32,6 +34,10 @@ class AlertConfig:
     drop_percent: float
     volatility_percentile: float
 
+    # Valuation configs
+    temperature: float
+    prompt: str
+
     # Email configs
     sender_email: str
     sender_password: str
@@ -41,25 +47,14 @@ class AlertConfig:
 class AlertSystem:
     def __init__(self, config: AlertConfig):
 
+        # Save settings
         self.config = config
-
-        # Save files
-        self.returns_thresholds_file = config.returns_thresholds_file
-        self.volatilities_thresholds_file = config.volatilities_thresholds_file
-        self.stats_cache_file = config.stats_cache_file
-
-        # Save parameters
-        self.min_market_cap = config.min_market_cap
-        self.drop_percentile = config.drop_percentile
-        self.drop_percent = config.drop_percent
-        self.volatility_percentile = config.volatility_percentile
-        self.volatility_rolling_window = config.volatility_rolling_window
 
         # Initialize classes
         self.data = DataProvider(
             prices_cache_file = config.prices_cache_file, 
-            api_key = config.api_key, 
-            secret_key = config.secret_key, 
+            data_api_key = config.data_api_key, 
+            data_secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
             lookback_years = config.lookback_years
             )
@@ -69,9 +64,6 @@ class AlertSystem:
             sender_password = config.sender_password, 
             to_emails = config.to_emails
             )
-        
-        self.analyzer = None
-        self.daily_stats = None
 
     def prep_system(self):
         '''
@@ -87,18 +79,18 @@ class AlertSystem:
             self.data.update_prices_data()
             self.data.load_prices_data()
 
-            # Initialize analyzer and calculate thresholds
-            self.analyzer = Analyzer(
-                returns_thresholds_file = self.returns_thresholds_file, 
-                volatilities_thresholds_file = self.volatilities_thresholds_file,
+            # Initialize components
+            analyzer = Analyzer(
+                returns_thresholds_file = self.config.returns_thresholds_file, 
+                volatilities_thresholds_file = self.config.volatilities_thresholds_file,
                 price_data = self.data.prices_df, 
-                drop_percentile = self.drop_percentile, 
-                drop_percentage = self.drop_percent,
-                volatility_percentile = self.volatility_percentile,
-                volatility_rolling_window = self.volatility_rolling_window
+                drop_percentile = self.config.drop_percentile, 
+                drop_percentage = self.config.drop_percent,
+                volatility_percentile = self.config.volatility_percentile,
+                volatility_rolling_window = self.config.volatility_rolling_window
                 )
-            self.analyzer.calculate_returns_thresholds()
-            self.analyzer.calculate_volatilities_thresholds()
+            analyzer.calculate_returns_thresholds()
+            analyzer.calculate_volatilities_thresholds()
 
         except Exception as e:
             print(f'Error occurred: {e}')
@@ -118,25 +110,26 @@ class AlertSystem:
             # Load prices data
             self.data.load_prices_data()
 
-            # Initialize analyzer and statistics tracker
-            self.analyzer = Analyzer(
-                returns_thresholds_file = self.returns_thresholds_file, 
-                volatilities_thresholds_file = self.volatilities_thresholds_file,
+            # Initialize components
+            analyzer = Analyzer(
+                returns_thresholds_file = self.config.returns_thresholds_file, 
+                volatilities_thresholds_file = self.config.volatilities_thresholds_file,
                 price_data = self.data.prices_df,
-                drop_percentile = self.drop_percentile, 
-                drop_percentage = self.drop_percent,
-                volatility_percentile = self.volatility_percentile,
-                volatility_rolling_window = self.volatility_rolling_window
+                drop_percentile = self.config.drop_percentile, 
+                drop_percentage = self.config.drop_percent,
+                volatility_percentile = self.config.volatility_percentile,
+                volatility_rolling_window = self.config.volatility_rolling_window
                 )
             
-            self.daily_stats = DailyStats(self)
+            daily_stats = DailyStats(self.config)
+            valuation_agent = ValuationAgent(self.config.ai_api_key)
             
             # Load thresholds
-            self.analyzer.load_returns_thresholds()
-            self.analyzer.load_volatilities_thresholds()
+            analyzer.load_returns_thresholds()
+            analyzer.load_volatilities_thresholds()
 
             # Define tickers
-            tickers = list(self.analyzer.returns_thresholds.keys())
+            tickers = list(analyzer.returns_thresholds.keys())
 
             # Check if tickers is populated
             if not tickers:
@@ -155,27 +148,30 @@ class AlertSystem:
                 live_prices_df = self.data.fetch_live_prices(tickers)
 
                 # Check for returns drops
-                drops_df = self.analyzer.find_drops(live_prices_df)
+                drops_df = analyzer.find_drops(live_prices_df)
                 
                 # Fetch IV
                 implied_volatilities_df = self.data.fetch_live_volatilites(drops_df)
 
                 # Check for high IV
-                high_iv_df = self.analyzer.find_high_iv(implied_volatilities_df)
+                high_iv_df = analyzer.find_high_iv(implied_volatilities_df)
 
                 # Filter for new alerts
                 new_alerts_df = self.filter_new_alerts(high_iv_df, old_alerts)
+
+                # Add in valuation analysis
+                enriched_df = valuation_agent.analyze_tickers(self.config.prompt, self.config.temperature, new_alerts_df)
                 
                 # Send alerts
-                self.alert_manager.process_alerts(new_alerts_df)
+                self.alert_manager.process_alerts(enriched_df)
 
                 # Update stats if there is meaningful information
                 if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
-                    self.daily_stats.data.append({
+                    daily_stats.data.append({
                         'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
                         'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
                         'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
-                        'Alerts': new_alerts_df.to_dict(orient='records') if not new_alerts_df.empty else []
+                        'Alerts': enriched_df.to_dict(orient='records') if not new_alerts_df.empty else []
                     })
                 
                 # Add delay
@@ -186,7 +182,7 @@ class AlertSystem:
             # Save statistics and run prep at market close
             if now.hour >= 16:
                 print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
-                self.daily_stats.save_stats(len(tickers))
+                daily_stats.save_stats(len(tickers))
                 self.prep_system()
             else:
                 print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")

@@ -24,18 +24,29 @@ def main():
         returns_thresholds_file = 'data/returns_thresholds.json',
         volatilities_thresholds_file = 'data/volatilities_thresholds.json',
         stats_cache_file = 'data/system_data.json',
-        api_key = os.getenv('ALPACA_API_KEY'),
-        secret_key = os.getenv('ALPACA_SECRET_KEY'),
+        data_api_key = os.getenv('ALPACA_API_KEY'),
+        data_secret_key = os.getenv('ALPACA_SECRET_KEY'),
+        ai_api_key = os.getenv('GEMINI_API_KEY'),
         min_market_cap = 10_000_000_000,
         lookback_years = 1,
+        volatility_rolling_window = 21,
         drop_percentile = 0.0015,
         drop_percent = 0.20,
         volatility_percentile = 0.8,
-        volatility_rolling_window = 21,
+        temperature = 0.1,
+        prompt = '''
+        For EACH ticker, use Google Search to find the most recent financial data and news and provide an answer to the following questions:
+        1. Is the ticker cheap compared to itself historically?
+        2. Is the ticker cheap compared to analyst price targets?
+        3. Is the ticker cheap compared to other stocks in the same industry?
+        4. Are the issues that led to this ticker being undervalued fixable?
+        ''',
         sender_email = os.getenv('SENDER_EMAIL'),
         sender_password = os.getenv('SENDER_PASSWORD'),
         to_emails = to_emails,
     )
+
+    
 
     # Initialize the system
     alert_system = AlertSystem(settings)
