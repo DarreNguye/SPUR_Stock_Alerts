@@ -1,4 +1,4 @@
-from alpaca_data_provider import DataProvider
+from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
 from statistics import DailyStats
