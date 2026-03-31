@@ -30,7 +30,7 @@ def main():
         min_market_cap = 10_000_000_000,
         lookback_years = 1,
         volatility_rolling_window = 21,
-        drop_percentile = 0.0015,
+        drop_percentile = 0.003,
         drop_percent = 0.20,
         volatility_percentile = 0.8,
         temperature = 0.1,
