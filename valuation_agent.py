@@ -50,12 +50,21 @@ class ValuationAgent:
                 config = types.GenerateContentConfig(
                     tools = [{"google_search": {}}],
                     temperature = temperature,
-                    response_mime_type = 'application/json', 
                 )
             )
             
-            # Convert the response
-            results = json.loads(response.text)
+            # Convert and clean the response
+            raw_text = response.text.strip()
+            if raw_text.startswith('```json'):
+                raw_text = raw_text[7:]
+            elif raw_text.startswith('```'):
+                raw_text = raw_text[3:]
+            if raw_text.endswith('```'):
+                raw_text = raw_text[:-3]
+            raw_text = raw_text.strip()
+
+            # Convert to JSON
+            results = json.loads(raw_text)
 
             # Merge into the DataFrame
             if results:
