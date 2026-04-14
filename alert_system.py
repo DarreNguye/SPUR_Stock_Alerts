@@ -1,7 +1,7 @@
 from data_provider import DataProvider
 from analyzer import Analyzer
 from alert_manager import AlertManager
-from statistics import DailyStats
+from daily_stats import DailyStats
 from valuation_agent import ValuationAgent
 
 from datetime import datetime
@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from zoneinfo import ZoneInfo
 import time
 import pandas as pd
+import pandas_market_calendars as mcal
 
 @dataclass
 class AlertConfig:
@@ -199,9 +200,16 @@ class AlertSystem:
             Is the market open (boolean)
         '''
         curr = datetime.now(ZoneInfo('America/New_York'))
-        return (curr.weekday() < 5) and (
-            (curr.hour == 9 and curr.minute >= 30) or (10 <= curr.hour < 16)
+        nyse = mcal.get_calendar('NYSE')
+        schedule = nyse.schedule(
+            start_date=curr.strftime('%Y-%m-%d'),
+            end_date=curr.strftime('%Y-%m-%d')
         )
+        if schedule.empty:
+            return False
+        market_open = schedule.iloc[0]['market_open'].to_pydatetime()
+        market_close = schedule.iloc[0]['market_close'].to_pydatetime()
+        return market_open <= curr <= market_close
     
     def filter_new_alerts(self, alerts_in, old_alerts):
         '''

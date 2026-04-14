@@ -212,6 +212,7 @@ class DataProvider:
         # Merge old and new data
         updated_df = pd.concat([history_df, formatted_new_df])
         updated_df.drop_duplicates(subset = ['Date', 'Ticker'], keep = 'last', inplace = True)
+        updated_df.sort_values(['Ticker', 'Date'], inplace=True)
         updated_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
 
         # Set prices_df

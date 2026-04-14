@@ -9,3 +9,4 @@ numpy
 yfinance
 streamlit
 google-genai
+pandas_market_calendars

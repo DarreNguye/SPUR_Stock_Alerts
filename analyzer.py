@@ -87,6 +87,9 @@ class Analyzer:
             Tickers that are below the threshold (pandas.DataFrame)
         '''
 
+        # Safe copy
+        live_prices_df = live_prices_df.copy()
+
         # Check if live_df has data
         if live_prices_df is None or live_prices_df.empty:
             print('No live prices available.')
@@ -98,7 +101,7 @@ class Analyzer:
             return pd.DataFrame()
         
         # Get previous closes
-        prev_closes = self.price_data.groupby('Ticker')['Close'].last()
+        prev_closes = self.price_data.sort_values('Date').groupby('Ticker')['Close'].last()
         live_prices_df['Prev_Close'] = live_prices_df['Ticker'].map(prev_closes)
         live_prices_df.dropna(subset=['Prev_Close'], inplace=True)
 
@@ -212,6 +215,9 @@ class Analyzer:
         Return:
             Tickers that are above the threshold (pandas.DataFrame)
         '''
+
+        # Safe copy
+        drops_df = drops_df.copy()
 
         # Check if live_df has data
         if drops_df is None or drops_df.empty:
