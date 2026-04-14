@@ -143,6 +143,7 @@ class DataProvider:
             print('Failed to download historical prices.')
             return
         formatted_df = self.format_prices_data(prices_dfs)
+        formatted_df.sort_values(['Ticker', 'Date'], inplace=True)
             
         # Cache data
         os.makedirs(os.path.dirname(self.prices_cache_file), exist_ok = True)
@@ -335,10 +336,11 @@ class DataProvider:
                 
                 # Format
                 for symbol, snapshot in snapshots.items():
-                    if snapshot and snapshot.latest_trade and snapshot.daily_bar:
+                    if snapshot and snapshot.latest_trade and snapshot.previous_daily_bar:
                         live_rows.append({
                             'Ticker': symbol,
-                            'Live_Price': snapshot.latest_trade.price,        
+                            'Live_Price': snapshot.latest_trade.price,
+                            'Prev_Close': snapshot.previous_daily_bar.close        
                         })
 
             except Exception as e:

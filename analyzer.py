@@ -99,11 +99,6 @@ class Analyzer:
         if self.price_data is None or self.price_data.empty:
             print('No historical prices available.')
             return pd.DataFrame()
-        
-        # Get previous closes
-        prev_closes = self.price_data.sort_values('Date').groupby('Ticker')['Close'].last()
-        live_prices_df['Prev_Close'] = live_prices_df['Ticker'].map(prev_closes)
-        live_prices_df.dropna(subset=['Prev_Close'], inplace=True)
 
         # Calculate live returns
         live_prices_df['Live_Return'] = (live_prices_df['Live_Price'] - live_prices_df['Prev_Close']) / live_prices_df['Prev_Close']
