@@ -2,6 +2,13 @@ import pandas as pd
 import json
 from google import genai
 from google.genai import types
+import numpy as np
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.integer, np.floating)):
+            return obj.item()
+        return super().default(obj)
 
 class ValuationAgent:
     '''
@@ -38,7 +45,7 @@ class ValuationAgent:
         print(f'Asking Gemini for context on batch: {tickers}...')
         
         # Create the directions
-        data_string = f'The following stocks have just triggered a price drop alert: {json.dumps(alert_data, indent=2)}'
+        data_string = f'The following stocks have just triggered a price drop alert: {json.dumps(alert_data, indent=2, cls=NumpyEncoder)}'
         out_format = 'You MUST return the output as a JSON array of objects, with keys "Ticker" and "Context"'
         query = data_string + prompt + out_format 
 

@@ -137,11 +137,14 @@ class AlertSystem:
                 print('No tickers found.')
                 return
             
+            # Define calendar
+            calendar = mcal.get_calendar('NYSE')
+            
             # Store already alerted tickers
             old_alerts = []
 
             # While the market is open
-            while self.is_market_open():
+            while self.is_market_open(calendar):
                 now = datetime.now(ZoneInfo('America/New_York'))
                 print(f"[{now.strftime('%H:%M:%S')}] Market Open: Scanning {len(tickers)} tickers...")
                 
@@ -191,7 +194,7 @@ class AlertSystem:
         except Exception as e:
             print(f'Error during live scan: {e}')
 
-    def is_market_open(self):
+    def is_market_open(self, calendar):
         '''
         Helper function to determine if the market is open
         Parameters:
@@ -200,8 +203,7 @@ class AlertSystem:
             Is the market open (boolean)
         '''
         curr = datetime.now(ZoneInfo('America/New_York'))
-        nyse = mcal.get_calendar('NYSE')
-        schedule = nyse.schedule(
+        schedule = calendar.schedule(
             start_date=curr.strftime('%Y-%m-%d'),
             end_date=curr.strftime('%Y-%m-%d')
         )

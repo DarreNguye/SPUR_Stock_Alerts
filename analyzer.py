@@ -95,11 +95,6 @@ class Analyzer:
             print('No live prices available.')
             return pd.DataFrame()
         
-        # Check if price_data has data
-        if self.price_data is None or self.price_data.empty:
-            print('No historical prices available.')
-            return pd.DataFrame()
-
         # Calculate live returns
         live_prices_df['Live_Return'] = (live_prices_df['Live_Price'] - live_prices_df['Prev_Close']) / live_prices_df['Prev_Close']
         live_prices_df['Returns_Threshold'] = live_prices_df['Ticker'].map(self.returns_thresholds).fillna(-self.drop_percentage)

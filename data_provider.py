@@ -144,6 +144,10 @@ class DataProvider:
             return
         formatted_df = self.format_prices_data(prices_dfs)
         formatted_df.sort_values(['Ticker', 'Date'], inplace=True)
+
+        # Keep only data within the lookback period 
+        cutoff = datetime.today() - timedelta(days=self.lookback_years * 365)
+        formatted_df = formatted_df[formatted_df['Date'] >= cutoff]
             
         # Cache data
         os.makedirs(os.path.dirname(self.prices_cache_file), exist_ok = True)
@@ -214,6 +218,10 @@ class DataProvider:
         updated_df = pd.concat([history_df, formatted_new_df])
         updated_df.drop_duplicates(subset = ['Date', 'Ticker'], keep = 'last', inplace = True)
         updated_df.sort_values(['Ticker', 'Date'], inplace=True)
+
+        # Keep only data within the lookback period
+        cutoff = datetime.today() - timedelta(days=self.lookback_years * 365)
+        updated_df = updated_df[updated_df['Date'] >= cutoff]
         updated_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
 
         # Set prices_df
@@ -353,8 +361,9 @@ class DataProvider:
 
         # Format data
         live_df = pd.DataFrame(live_rows)
-        live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors = 'coerce')
-        live_df.dropna(subset = ['Live_Price'], inplace=True)
+        live_df['Live_Price'] = pd.to_numeric(live_df['Live_Price'], errors='coerce')
+        live_df['Prev_Close'] = pd.to_numeric(live_df['Prev_Close'], errors='coerce')
+        live_df.dropna(subset=['Live_Price', 'Prev_Close'], inplace=True)
 
         return live_df
         

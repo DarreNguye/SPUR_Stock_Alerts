@@ -189,7 +189,7 @@ class SystemStats:
         
         # Filter for the DataFrame
         today = datetime.now().date()
-        default_start = self.scans_df['Time'].min().date()
+        default_start = self.alerts_df['Time'].min().date()
 
         date_range = st.date_input(
             'Select Date Range',
