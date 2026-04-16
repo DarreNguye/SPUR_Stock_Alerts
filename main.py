@@ -20,6 +20,7 @@ def main():
 
     # Config settings
     settings = AlertConfig(
+        universe_cache_file = 'data/universe.json',
         prices_cache_file = 'data/historical_prices.parquet',
         returns_thresholds_file = 'data/returns_thresholds.json',
         volatilities_thresholds_file = 'data/volatilities_thresholds.json',
@@ -53,14 +54,20 @@ def main():
 
     # Choose to prep or scan
     parser = argparse.ArgumentParser(description= 'SPUR Alert System')
-    parser.add_argument('--mode', choices = ['prep', 'scan'], required = True)
+    parser.add_argument('--mode', choices = ['mprep', 'dprep', 'scan'], required = True)
     args = parser.parse_args()
 
-    # Execute prep procedure
-    if args.mode == 'prep':
-        print('=== Initiating Prep ===')
-        alert_system.prep_system()
-        print('=== Finished Prep ===')
+    # Execute monthly prep procedure
+    if args.mode == 'mprep':
+        print('=== Initiating Monthly Prep ===')
+        alert_system.monthly_prep_system()
+        print('=== Finished Monthly Prep ===')
+
+    # Execute daily prep procedure
+    elif args.mode == 'dprep':
+        print('=== Initiating Daily Prep ===')
+        alert_system.daily_prep_system()
+        print('=== Finished Daily Prep ===')
     
     # Execute scan procedure
     elif args.mode == 'scan':

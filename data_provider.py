@@ -2,6 +2,7 @@ import pandas as pd
 import os
 from datetime import datetime, timedelta
 from tqdm import tqdm
+import json
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetAssetsRequest
@@ -18,8 +19,10 @@ class DataProvider:
     Data provider class using Alpaca API
     '''
 
-    def __init__(self, prices_cache_file, api_key, secret_key, min_market_cap, lookback_years):
+    def __init__(self, universe_cache_file, prices_cache_file, api_key, secret_key, min_market_cap, lookback_years):
+        self.universe_cache_file = universe_cache_file
         self.prices_cache_file = prices_cache_file
+        
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
 
@@ -29,21 +32,85 @@ class DataProvider:
         self.universe_df = None
         self.prices_df = None
 
+    # =============================================================================
+    # UNIVERSE FUNCTIONS
+    # =============================================================================
+
     def get_universe(self):
         '''
-        Fetches a universe of a specified market cap
+        Fetches a universe of a specified criteria
         Parameters:
             None
         Return:
             Universe data (pandas.DataFrame)
         '''
 
+        # Load the universe if existing and current
+        if self.load_universe():
+            print('Loaded existing universe.')
+            return self.universe_df
+        
+        # Fetch tickers
+        print("Fetching new universe data...")
+        tickers = self.ticker_screener()
+
+        final_tickers = [{'Ticker': ticker} for ticker in tickers]
+
+        # Package universe data
+        current_month = datetime.now().strftime('%Y-%m')
+        data = {
+            'Date': current_month,
+            'Tickers': final_tickers,
+        }
+
+        # Save
+        os.makedirs(os.path.dirname(self.universe_cache_file), exist_ok=True)
+        with open(self.universe_cache_file, 'w') as f:
+            json.dump(data, f, indent=4)
+
+        self.universe_df = pd.DataFrame(data['Tickers'])
+        print(f'Successfuly fetched universe data for {len(self.universe_df)} tickers.')
+        return self.universe_df
+
+    def ticker_screener(self):
+        '''
+        Helper function that screens for US stocks above a minimum market cap
+        Parameters: 
+            None
+        Return:
+            Screened tickers (pandas.DataFrame)
+        '''
+
         try:
-            print("Fetching universe data...")
+            # Define filters
+            filters = [
+                ['eq', ['region', 'us']],
+                ['gt', ['lastclosemarketcap.lasttwelvemonths', self.min_market_cap]]
+            ]
+            
+            query = yfs.create_query(filters)
+            screened_tickers = []
+            offset = 0
+            
+            # Loop through tickers and screen
+            with tqdm(desc = 'Fetching Screened tickers', unit = ' tickers') as pbar:  
+                while True:
+                    payload = yfs.create_payload('equity', query)
+                    payload['offset'] = offset
+                    payload['size'] = 250 
+                    screened_data = yfs.get_data(payload)
+                    
+                    # End when finished
+                    if screened_data is None or screened_data.empty:
+                        break
+                    
+                    # Add screened ticker
+                    new_tickers = screened_data['symbol'].tolist()
+                    screened_tickers.extend(new_tickers)
 
-            # Define screen for tickers above the minimum market cap
-            screened_tickers = self.universe_screener()
-
+                    pbar.update(len(new_tickers))
+                    offset += 250
+                
             # Pull all equities
             search_params = GetAssetsRequest(
                 asset_class = AssetClass.US_EQUITY,
@@ -56,58 +123,49 @@ class DataProvider:
             all_tickers = [asset.symbol for asset in assets if asset.tradable]
 
             # Find screened tickers with available data
-            final_tickers = list(set(screened_tickers) & set(all_tickers))
+            available_tickers = list(set(screened_tickers) & set(all_tickers))
 
             # Filters for special derivatives
-            clean_tickers = [ticker for ticker in final_tickers if len(ticker) < 5 or (len(ticker) == 5 and ticker[-1] not in ['W', 'R', 'U', 'Q'])]
-
-            self.universe_df = pd.DataFrame({'Instrument': clean_tickers})
-            print(f'Successfuly fetched universe data for {len(self.universe_df)} tickers.')
-            return self.universe_df
+            clean_tickers = [ticker for ticker in available_tickers if len(ticker) < 5 or (len(ticker) == 5 and ticker[-1] not in ['W', 'R', 'U', 'Q'])]
+            return clean_tickers
         
         except Exception as e:
-            print(f'Error fetching universe: {e}')
-            return pd.DataFrame()
-
-    def universe_screener(self):
+            print(f'Error fetching tickers: {e}')
+            return []
+    
+    def load_universe(self):
         '''
-        Helper function that screens for US stocks above a minimum market cap
+        Loads universe from a JSON file
         Parameters: 
             None
-        Return:
-            Screened tickers (list str)
+        Returns:
+            Successful universe loading (bool)
         '''
 
-        # Define filters
-        filters = [
-            ['eq', ['region', 'us']],
-            ['gt', ['lastclosemarketcap.lasttwelvemonths', self.min_market_cap]]
-        ]
-        
-        query = yfs.create_query(filters)
-        screened_tickers = []
-        offset = 0
-        
-        # Loop through tickers and screen
-        with tqdm(desc = 'Fetching Screened tickers', unit = ' tickers') as pbar:  
-            while True:
-                payload = yfs.create_payload('equity', query)
-                payload['offset'] = offset
-                payload['size'] = 250 
-                screened_data = yfs.get_data(payload)
-                
-                # End when finished
-                if screened_data is None or screened_data.empty:
-                    break
-                
-                # Add screened ticker
-                new_tickers = screened_data['symbol'].tolist()
-                screened_tickers.extend(new_tickers)
+        # Check if universe is already populated
+        if self.universe_df is not None and not self.universe_df.empty:
+            return True
 
-                pbar.update(len(new_tickers))
-                offset += 250
+        # Check if the file exists
+        if not os.path.exists(self.universe_cache_file):
+            return False
             
-        return screened_tickers
+        # Read JSON file
+        with open(self.universe_cache_file, 'r') as f:
+            data = json.load(f)
+
+        # Check if data is current
+        current_month = datetime.now().strftime('%Y-%m')
+        if data.get('Date') != current_month:
+            return False
+
+        # Set universe
+        self.universe_df = pd.DataFrame(data['Tickers'])
+        return True
+    
+    # =============================================================================
+    # HISTORICAL PRICES FUNCTIONS
+    # =============================================================================
         
     def initialize_prices_data(self):
         '''
@@ -135,7 +193,7 @@ class DataProvider:
         start_date = end_date - timedelta(days = self.lookback_years * 365)
 
         # Fetch data
-        tickers = self.universe_df['Instrument'].tolist()
+        tickers = self.universe_df['Ticker'].tolist()
         prices_dfs = self.fetch_prices_data(tickers, start_date, end_date)
         
         # Format data for caching
@@ -184,7 +242,7 @@ class DataProvider:
         
         # Identify tickers in cache and new tickers
         cached_tickers = set(history_df['Ticker'].unique())
-        current_tickers = set(self.universe_df['Instrument'].tolist())
+        current_tickers = set(self.universe_df['Ticker'].tolist())
         
         new_tickers = list(current_tickers - cached_tickers)
         existing_tickers = list(current_tickers & cached_tickers)
@@ -217,6 +275,7 @@ class DataProvider:
         # Merge old and new data
         updated_df = pd.concat([history_df, formatted_new_df])
         updated_df.drop_duplicates(subset = ['Date', 'Ticker'], keep = 'last', inplace = True)
+        updated_df = updated_df[updated_df['Ticker'].isin(current_tickers)]
         updated_df.sort_values(['Ticker', 'Date'], inplace=True)
 
         # Keep only data within the lookback period
@@ -310,12 +369,16 @@ class DataProvider:
 
         # Check if the file exists
         if not os.path.exists(self.prices_cache_file):
-            print('Cache file not found.')
+            print('Prices cache file not found.')
             return
             
         # Read parquet file
         self.prices_df = pd.read_parquet(self.prices_cache_file)
         print('Loaded historical prices from a parquet file.')
+
+    # =============================================================================
+    # LIVE PRICE FUNCTIONS
+    # =============================================================================
 
     def fetch_live_prices(self, tickers):
         '''
@@ -366,6 +429,10 @@ class DataProvider:
         live_df.dropna(subset=['Live_Price', 'Prev_Close'], inplace=True)
 
         return live_df
+
+    # =============================================================================
+    # LIVE IV FUNCTIONS
+    # =============================================================================
         
     def fetch_live_volatilites(self, drops_df):
         '''

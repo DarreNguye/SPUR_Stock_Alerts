@@ -10,11 +10,13 @@ from zoneinfo import ZoneInfo
 import time
 import pandas as pd
 import pandas_market_calendars as mcal
+import os
 
 @dataclass
 class AlertConfig:
 
     # Files
+    universe_cache_file: str
     prices_cache_file: str
     returns_thresholds_file: str
     volatilities_thresholds_file: str
@@ -53,22 +55,39 @@ class AlertSystem:
 
         # Initialize classes
         self.data = DataProvider(
+            universe_cache_file = config.universe_cache_file,
             prices_cache_file = config.prices_cache_file, 
             api_key = config.data_api_key, 
             secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
             lookback_years = config.lookback_years
             )
-
-        self.alert_manager = AlertManager(
-            sender_email = config.sender_email, 
-            sender_password = config.sender_password, 
-            to_emails = config.to_emails
-            )
-
-    def prep_system(self):
+    
+    def monthly_prep_system(self):
         '''
-        Fetches and caches historical prices and calculates and stores thresholds
+        Creates universe data
+        Parameters: 
+            None
+        Returns:
+            None
+        '''
+        try: 
+            # Rewrite the universe
+            self.data.universe_df = None  
+            if os.path.exists(self.data.universe_cache_file):
+                os.remove(self.data.universe_cache_file) 
+            self.data.get_universe()
+
+            # Run daily prep on the new universe
+            print('Universe updated. Running daily prep...')
+            self.daily_prep_system()
+
+        except Exception as e:
+            print(f'Error during monthly prep: {e}')
+
+    def daily_prep_system(self):
+        '''
+        Fetches and caches returns and IVs and calculates and stores thresholds
         Parameters: 
             None
         Returns:
@@ -94,7 +113,7 @@ class AlertSystem:
             analyzer.calculate_volatilities_thresholds()
 
         except Exception as e:
-            print(f'Error occurred: {e}')
+            print(f'Error during daily prep: {e}')
 
     def run_system(self):
         '''
@@ -120,6 +139,12 @@ class AlertSystem:
                 drop_percentage = self.config.drop_percent,
                 volatility_percentile = self.config.volatility_percentile,
                 volatility_rolling_window = self.config.volatility_rolling_window
+                )
+            
+            self.alert_manager = AlertManager(
+                sender_email = self.config.sender_email, 
+                sender_password = self.config.sender_password, 
+                to_emails = self.config.to_emails
                 )
             
             daily_stats = DailyStats(self.config)
@@ -187,7 +212,7 @@ class AlertSystem:
             if now.hour >= 16:
                 print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
                 daily_stats.save_stats(len(tickers))
-                self.prep_system()
+                self.daily_prep_system()
             else:
                 print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
 
