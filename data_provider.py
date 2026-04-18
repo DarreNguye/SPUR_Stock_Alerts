@@ -11,17 +11,19 @@ from alpaca.data.historical import StockHistoricalDataClient
 from alpaca.data.requests import StockBarsRequest, StockSnapshotRequest
 from alpaca.data.timeframe import TimeFrame
 from alpaca.data.enums import DataFeed
-import yfscreen as yfs
 import yfinance as yf
+import wrds
 
 class DataProvider:
     '''
-    Data provider class using Alpaca API
+    Data provider class
     '''
 
-    def __init__(self, universe_cache_file, prices_cache_file, api_key, secret_key, min_market_cap, lookback_years):
-        self.universe_cache_file = universe_cache_file
-        self.prices_cache_file = prices_cache_file
+    def __init__(self, api_key, secret_key, min_market_cap, lookback_years):
+        self.universe_cache_file = 'data/universe.json'
+        self.ttm_pe_cache_file = 'data/ttm_pe.json'
+        self.ntm_pe_cache_file = 'data/ntm_pe.json'
+        self.prices_cache_file = 'data/historical_prices.parquet'
         
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
@@ -74,44 +76,43 @@ class DataProvider:
 
     def ticker_screener(self):
         '''
-        Helper function that screens for US stocks above a minimum market cap
+        Screens for US common stocks above a minimum market cap 
         Parameters: 
             None
         Return:
-            Screened tickers (pandas.DataFrame)
+            Screened tickers (list of str)
         '''
 
+        db = None
         try:
-            # Define filters
-            filters = [
-                ['eq', ['region', 'us']],
-                ['gt', ['lastclosemarketcap.lasttwelvemonths', self.min_market_cap]]
-            ]
-            
-            query = yfs.create_query(filters)
-            screened_tickers = []
-            offset = 0
-            
-            # Loop through tickers and screen
-            with tqdm(desc = 'Fetching Screened tickers', unit = ' tickers') as pbar:  
-                while True:
-                    payload = yfs.create_payload('equity', query)
-                    payload['offset'] = offset
-                    payload['size'] = 250 
-                    screened_data = yfs.get_data(payload)
-                    
-                    # End when finished
-                    if screened_data is None or screened_data.empty:
-                        break
-                    
-                    # Add screened ticker
-                    new_tickers = screened_data['symbol'].tolist()
-                    screened_tickers.extend(new_tickers)
+            db = wrds.Connection()
 
-                    pbar.update(len(new_tickers))
-                    offset += 250
-                
-            # Pull all equities
+            print(f'Fetching tickers...')
+            
+            # SQL Query
+            sql_query = f'''
+                SELECT DISTINCT tic
+                FROM comp.secd
+                WHERE datadate = (SELECT MAX(datadate) FROM comp.secd)
+                AND fic = 'USA'
+                AND tpci = '0' 
+                AND (prccd * csho * 1000000) > {self.min_market_cap}
+            '''
+            
+            # Execute query
+            screened_data = db.raw_sql(sql_query)
+            db.close()
+            
+            # Check if tickers screened successfully
+            if screened_data is None or screened_data.empty:
+                print('Ticker screener returned no data')
+                return []
+
+            # Clean tickers
+            raw_tickers = screened_data['tic'].dropna().tolist()
+            screened_tickers = [str(ticker).replace('.', '-') for ticker in raw_tickers]
+
+            # Check if tickers are available to trade
             search_params = GetAssetsRequest(
                 asset_class = AssetClass.US_EQUITY,
                 status = 'active',
@@ -119,19 +120,23 @@ class DataProvider:
             )
             assets = self.trading_client.get_all_assets(search_params)
 
-            # Filter niche assets
+            # Filter for tradable assets
             all_tickers = [asset.symbol for asset in assets if asset.tradable]
 
-            # Find screened tickers with available data
-            available_tickers = list(set(screened_tickers) & set(all_tickers))
+            # Find intersection
+            clean_tickers = list(set(screened_tickers) & set(all_tickers))
 
-            # Filters for special derivatives
-            clean_tickers = [ticker for ticker in available_tickers if len(ticker) < 5 or (len(ticker) == 5 and ticker[-1] not in ['W', 'R', 'U', 'Q'])]
+            print(f'Successfully fetched {len(clean_tickers)} tickers.')
             return clean_tickers
         
         except Exception as e:
-            print(f'Error fetching tickers: {e}')
+            print(f'Error fetching universe from WRDS: {e}')
             return []
+        
+        finally:
+            # Clean up
+            if db is not None:
+                db.close()
     
     def load_universe(self):
         '''
@@ -162,6 +167,15 @@ class DataProvider:
         # Set universe
         self.universe_df = pd.DataFrame(data['Tickers'])
         return True
+    
+    def clear_universe(self):
+        '''Clears the universe'''
+        if os.path.exists(self.universe_cache_file):
+            os.remove(self.universe_cache_file) 
+    
+    # =============================================================================
+    # FUNDAMENTAL DATA FUNCTIONS
+    # =============================================================================
     
     # =============================================================================
     # HISTORICAL PRICES FUNCTIONS

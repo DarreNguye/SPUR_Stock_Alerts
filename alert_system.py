@@ -15,13 +15,6 @@ import os
 @dataclass
 class AlertConfig:
 
-    # Files
-    universe_cache_file: str
-    prices_cache_file: str
-    returns_thresholds_file: str
-    volatilities_thresholds_file: str
-    stats_cache_file: str
-
     # Keys
     data_api_key: str
     data_secret_key: str
@@ -55,8 +48,6 @@ class AlertSystem:
 
         # Initialize classes
         self.data = DataProvider(
-            universe_cache_file = config.universe_cache_file,
-            prices_cache_file = config.prices_cache_file, 
             api_key = config.data_api_key, 
             secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
@@ -74,8 +65,7 @@ class AlertSystem:
         try: 
             # Rewrite the universe
             self.data.universe_df = None  
-            if os.path.exists(self.data.universe_cache_file):
-                os.remove(self.data.universe_cache_file) 
+            self.data.clear_universe()
             self.data.get_universe()
 
             # Run daily prep on the new universe
@@ -101,8 +91,6 @@ class AlertSystem:
 
             # Initialize components
             analyzer = Analyzer(
-                returns_thresholds_file = self.config.returns_thresholds_file, 
-                volatilities_thresholds_file = self.config.volatilities_thresholds_file,
                 price_data = self.data.prices_df, 
                 drop_percentile = self.config.drop_percentile, 
                 drop_percentage = self.config.drop_percent,
@@ -132,8 +120,6 @@ class AlertSystem:
 
             # Initialize components
             analyzer = Analyzer(
-                returns_thresholds_file = self.config.returns_thresholds_file, 
-                volatilities_thresholds_file = self.config.volatilities_thresholds_file,
                 price_data = self.data.prices_df,
                 drop_percentile = self.config.drop_percentile, 
                 drop_percentage = self.config.drop_percent,

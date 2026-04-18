@@ -3,7 +3,7 @@ pyarrow
 alpaca-py
 tqdm
 python-dotenv
-yfscreen
+wrds
 pytz
 numpy
 yfinance

@@ -20,11 +20,6 @@ def main():
 
     # Config settings
     settings = AlertConfig(
-        universe_cache_file = 'data/universe.json',
-        prices_cache_file = 'data/historical_prices.parquet',
-        returns_thresholds_file = 'data/returns_thresholds.json',
-        volatilities_thresholds_file = 'data/volatilities_thresholds.json',
-        stats_cache_file = 'data/system_data.json',
         data_api_key = os.getenv('ALPACA_API_KEY'),
         data_secret_key = os.getenv('ALPACA_SECRET_KEY'),
         ai_api_key = os.getenv('GEMINI_API_KEY'),
@@ -46,8 +41,6 @@ def main():
         sender_password = os.getenv('SENDER_PASSWORD'),
         to_emails = to_emails,
     )
-
-    
 
     # Initialize the system
     alert_system = AlertSystem(settings)

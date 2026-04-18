@@ -9,6 +9,7 @@ class DailyStats:
     '''
     def __init__(self, config):
         self.config = config
+        self.stats_cache_file = 'data/system_data.json'
         self.data = []
     
     def save_stats(self, universe_count):
@@ -26,12 +27,12 @@ class DailyStats:
             print(f'Daily statistics are missing for {today}.')
             return
 
-        os.makedirs(os.path.dirname(self.config.stats_cache_file), exist_ok = True)
+        os.makedirs(os.path.dirname(self.stats_cache_file), exist_ok = True)
 
         # Read existing data
         existing_stats = {}
-        if os.path.exists(self.config.stats_cache_file):
-                with open(self.config.stats_cache_file, 'r') as f:
+        if os.path.exists(self.stats_cache_file):
+                with open(self.stats_cache_file, 'r') as f:
                     existing_stats = json.load(f)
 
         # Check if today is in the existing data
@@ -53,7 +54,7 @@ class DailyStats:
         existing_stats[today]['Scans'].extend(self.data)
 
         # Cache
-        with open(self.config.stats_cache_file, 'w') as f:
+        with open(self.stats_cache_file, 'w') as f:
             json.dump(existing_stats, f, indent = 4)
 
         print(f'Successfully saved daily statistics for {today}.')
