@@ -19,11 +19,13 @@ class DataProvider:
     Data provider class
     '''
 
-    def __init__(self, api_key, secret_key, min_market_cap, lookback_years):
+    def __init__(self, pe_percentile, analyst_discount, req_score, min_market_cap, lookback_years, api_key, secret_key):
         self.universe_cache_file = 'data/universe.json'
-        self.ttm_pe_cache_file = 'data/ttm_pe.json'
-        self.ntm_pe_cache_file = 'data/ntm_pe.json'
         self.prices_cache_file = 'data/historical_prices.parquet'
+
+        self.pe_percentile = pe_percentile
+        self.analyst_discount = analyst_discount
+        self.req_score = req_score
         
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
@@ -51,18 +53,42 @@ class DataProvider:
         if self.load_universe():
             print('Loaded existing universe.')
             return self.universe_df
+    
+        print('Fetching new universe data...')
         
-        # Fetch tickers
-        print("Fetching new universe data...")
-        tickers = self.ticker_screener()
+        # Build the query
+        query = self.universe_query()
+        
+        # Fetch fundamentals
+        fundamentals_df = self.fetch_fundamental_tickers(query)
+        if fundamentals_df is None or fundamentals_df.empty:
+            print('Ticker screener returned no fundamental data.')
+            return pd.DataFrame()
+        
+        # Filter tradable
+        ticker_list = fundamentals_df['tic'].tolist()
+        tradable_tickers = self.filter_tradable_assets(ticker_list)
+        fundamentals_df = fundamentals_df[fundamentals_df['tic'].isin(tradable_tickers)].copy()
+            
+        # Fetch insider trading
+        insider_df = self.fetch_insider_trading(list(fundamentals_df.iterrows()))
+        if insider_df is None or insider_df.empty:
+            print('Insider trading fetch returned no data.')
+            return pd.DataFrame()
+        
+        # Score calculation
+        insider_df['score'] = insider_df['fundamentals_score'] + insider_df['insider_score']
 
-        final_tickers = [{'Ticker': ticker} for ticker in tickers]
+        # Filter based on final score
+        final_universe_df = insider_df[insider_df['score'] >= self.req_score]
+        final_universe_df = final_universe_df.rename(columns={'tic': 'Ticker'})
 
         # Package universe data
         current_month = datetime.now().strftime('%Y-%m')
+        universe_records = final_universe_df.to_dict(orient='records')
         data = {
             'Date': current_month,
-            'Tickers': final_tickers,
+            'Universe_Data': universe_records,
         }
 
         # Save
@@ -70,73 +96,9 @@ class DataProvider:
         with open(self.universe_cache_file, 'w') as f:
             json.dump(data, f, indent=4)
 
-        self.universe_df = pd.DataFrame(data['Tickers'])
+        self.universe_df = pd.DataFrame(data['Universe_Data'])
         print(f'Successfuly fetched universe data for {len(self.universe_df)} tickers.')
         return self.universe_df
-
-    def ticker_screener(self):
-        '''
-        Screens for US common stocks above a minimum market cap 
-        Parameters: 
-            None
-        Return:
-            Screened tickers (list of str)
-        '''
-
-        db = None
-        try:
-            db = wrds.Connection()
-
-            print(f'Fetching tickers...')
-            
-            # SQL Query
-            sql_query = f'''
-                SELECT DISTINCT tic
-                FROM comp.secd
-                WHERE datadate = (SELECT MAX(datadate) FROM comp.secd)
-                AND fic = 'USA'
-                AND tpci = '0' 
-                AND (prccd * csho * 1000000) > {self.min_market_cap}
-            '''
-            
-            # Execute query
-            screened_data = db.raw_sql(sql_query)
-            db.close()
-            
-            # Check if tickers screened successfully
-            if screened_data is None or screened_data.empty:
-                print('Ticker screener returned no data')
-                return []
-
-            # Clean tickers
-            raw_tickers = screened_data['tic'].dropna().tolist()
-            screened_tickers = [str(ticker).replace('.', '-') for ticker in raw_tickers]
-
-            # Check if tickers are available to trade
-            search_params = GetAssetsRequest(
-                asset_class = AssetClass.US_EQUITY,
-                status = 'active',
-                feed = DataFeed.IEX
-            )
-            assets = self.trading_client.get_all_assets(search_params)
-
-            # Filter for tradable assets
-            all_tickers = [asset.symbol for asset in assets if asset.tradable]
-
-            # Find intersection
-            clean_tickers = list(set(screened_tickers) & set(all_tickers))
-
-            print(f'Successfully fetched {len(clean_tickers)} tickers.')
-            return clean_tickers
-        
-        except Exception as e:
-            print(f'Error fetching universe from WRDS: {e}')
-            return []
-        
-        finally:
-            # Clean up
-            if db is not None:
-                db.close()
     
     def load_universe(self):
         '''
@@ -172,10 +134,173 @@ class DataProvider:
         '''Clears the universe'''
         if os.path.exists(self.universe_cache_file):
             os.remove(self.universe_cache_file) 
-    
-    # =============================================================================
-    # FUNDAMENTAL DATA FUNCTIONS
-    # =============================================================================
+
+    def universe_query(self):
+        '''
+        Constructs an SQL query for TTM P/E, NTM P/E, and Analyst Targets
+        Parameters:
+            None
+        Return:
+            SQL query (str)
+        '''
+        start_date = (datetime.today() - timedelta(days=self.lookback_years * 365)).strftime('%Y-%m-%d')
+        
+        return f'''
+            WITH MarketCapScreen AS (
+                SELECT DISTINCT tic
+                FROM comp.secd
+                WHERE datadate = (SELECT MAX(datadate) FROM comp.secd)
+                AND fic = 'USA' AND tpci = '0' 
+                AND (prccd * csho * 1000000) > {self.min_market_cap}
+            ),
+            HistoricalPE AS (
+                SELECT tic,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_exi) as ttm_thresh,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_inc) as ntm_thresh
+                FROM wrdsapps.firm_ratio
+                WHERE public_date >= '{start_date}'
+                GROUP BY tic
+            ),
+            LatestPE AS (
+                SELECT tic, pe_exi, pe_inc
+                FROM (
+                    SELECT tic, pe_exi, pe_inc,
+                           ROW_NUMBER() OVER (PARTITION BY tic ORDER BY public_date DESC) as rn
+                    FROM wrdsapps.firm_ratio
+                ) tmp
+                WHERE rn = 1
+            ),
+            AnalystTargets AS (
+                SELECT ticker, ((mean_ptg - current_price) / mean_ptg) as discount_pct
+                FROM ibes.summary
+            ),
+            ScoredWRDS AS (
+               SELECT m.tic,
+                       l.pe_exi, 
+                       l.pe_inc, 
+                       a.discount_pct,
+                       (CASE WHEN l.pe_exi <= h.ttm_thresh THEN 1 ELSE 0 END) as ttm_score,
+                       (CASE WHEN l.pe_inc <= h.ntm_thresh THEN 1 ELSE 0 END) as ntm_score,
+                       (CASE WHEN a.upside_pct >= {self.analyst_discount} THEN 1 ELSE 0 END) as target_score
+                FROM MarketCapScreen m
+                LEFT JOIN HistoricalPE h ON m.tic = h.tic
+                LEFT JOIN LatestPE l ON m.tic = l.tic
+                LEFT JOIN AnalystTargets a ON m.tic = a.ticker
+            )
+            SELECT tic, 
+                   (ttm_score + ntm_score + target_score) as fundamentals_score,
+                   ttm_score,
+                   ntm_score,
+                   target_score,
+                   pe_exi as raw_ttm_pe,
+                   pe_inc as raw_ntm_pe,
+                   discount_pct as raw_discount_pct
+            FROM ScoredWRDS
+            WHERE (ttm_score + ntm_score + target_score) >= {self.req_score - 3}
+        '''
+
+    def fetch_fundamental_tickers(self, sql_query):
+        '''
+        Executes the SQL query that pass the fundamental criteria
+        Parameters:
+            sql_query: An SQL query (str)
+        Returns:
+            Data on all passing tickers (pandas.DataFrame)
+        '''
+
+        print('Fetching new universe tickers...')
+        db = None
+        try:
+            db = wrds.Connection()
+            screened_data = db.raw_sql(sql_query)
+            
+            # Check if tickers exist
+            if screened_data is None and screened_data.empty:
+                print('No valid tickers for the universe.')
+                return pd.DataFrame()
+            
+            # Clean tickers
+            screened_data['tic'] = screened_data['tic'].str.replace('.', '-')
+            return screened_data
+            
+        except Exception as e:
+            print(f'Error fetching universe: {e}')
+            return pd.DataFrame()
+        
+        finally:
+            # Cleanup
+            if db is not None:
+                db.close()
+
+    def fetch_insider_trading(self, tickers):
+        '''
+        Fetches insider trading data for tickers
+        Parameters:
+            tickers: Tickers to ensure are tradable (array str)
+        Return:
+            Net insider shares and a score (pandas.DataFrame)
+        '''
+
+        # Store
+        rows = []
+        
+        # Fetch insider trading data
+        for _, row in tqdm(tickers, total=len(tickers), desc = 'Fetching Insider Activity'):
+            ticker = row['tic']
+            insider_score = 0
+            net_shares = 0 
+            
+            try:
+                stock = yf.Ticker(ticker)
+                insider_data = stock.insider_transactions
+                
+                # Check if there is insider trading data
+                if insider_data is not None and not insider_data.empty:
+                    net_shares = insider_data['Shares'].sum() 
+                    if net_shares > 0:
+                        insider_score = 1
+
+            # Skip on excetion        
+            except Exception:
+                pass 
+            
+            # Convert row to dictionary
+            row_dict = row.to_dict()
+            row_dict['net_insider_shares'] = net_shares
+            row_dict['insider_score'] = insider_score
+            rows.append(row_dict)
+                
+        return pd.DataFrame(rows)
+
+    def filter_tradable_assets(self, tickers):
+        '''
+        Ensures tickers are tradable
+        Parameters:
+            tickers: Tickers to ensure are tradable (array str)
+        Return:
+            Tradable tickers (list str)
+        '''
+        
+        print('Ensuring tradability...')
+
+        # Check if tickers are passed
+        if not tickers:
+            return []
+            
+        try:
+            search_params = GetAssetsRequest(
+                asset_class=AssetClass.US_EQUITY,
+                status='active',
+                feed=DataFeed.IEX
+            )
+            assets = self.trading_client.get_all_assets(search_params)
+            tradable_symbols = {asset.symbol for asset in assets if asset.tradable}
+            
+            return list(set(tickers) & tradable_symbols)
+            
+        except Exception as e:
+            print(f'Error filtering tradable assets via Alpaca: {e}')
+            return []
     
     # =============================================================================
     # HISTORICAL PRICES FUNCTIONS

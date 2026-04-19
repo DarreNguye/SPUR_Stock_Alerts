@@ -25,6 +25,13 @@ class AlertConfig:
     lookback_years: int
     volatility_rolling_window: int
 
+    # Score config
+    req_score: str
+
+    # Universe configs
+    pe_percentile: str
+    analyst_discount: str
+
     # Analysis configs
     drop_percentile: float
     drop_percent: float
@@ -48,6 +55,9 @@ class AlertSystem:
 
         # Initialize classes
         self.data = DataProvider(
+            pe_percentile = config.pe_percentile,
+            analyst_discount = config.analyst_discount,
+            req_score = config.req_score,
             api_key = config.data_api_key, 
             secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
