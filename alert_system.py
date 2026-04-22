@@ -124,9 +124,16 @@ class AlertSystem:
         Return:
             None
         '''
-        print(f"\n[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] Starting live market scan...")
 
         try:
+
+            # Check if the market is open
+            now = datetime.now(ZoneInfo('America/New_York'))
+            calendar = mcal.get_calendar('NYSE')
+            if not self.is_market_open(calendar):
+                print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
+                return
 
             # Load prices data
             self.data.load_prices_data()
@@ -160,9 +167,6 @@ class AlertSystem:
             if not tickers:
                 print('No tickers found.')
                 return
-            
-            # Define calendar
-            calendar = mcal.get_calendar('NYSE')
             
             # Store already alerted tickers
             old_alerts = []
