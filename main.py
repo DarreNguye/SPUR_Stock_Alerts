@@ -20,10 +20,12 @@ def main():
 
     # Config settings
     settings = AlertConfig(
+        db_user = os.getenv('WRDS_USER'),
+        db_pass = os.getenv('WRDS_PASS'),
         data_api_key = os.getenv('ALPACA_API_KEY'),
         data_secret_key = os.getenv('ALPACA_SECRET_KEY'),
         ai_api_key = os.getenv('GEMINI_API_KEY'),
-        req_score = 2,
+        req_score = 4,
         pe_percentile = 0.20,
         analyst_discount = 0.15,
         min_market_cap = 10_000_000_000,

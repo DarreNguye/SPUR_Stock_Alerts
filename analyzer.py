@@ -42,7 +42,7 @@ class Analyzer:
         prices_df.sort_values(by = ['Ticker', 'Date'], inplace = True)
 
         # Calculate thresholds
-        prices_df['Return'] = prices_df.groupby('Ticker')['Close'].pct_change()
+        prices_df.loc[:, 'Return'] = prices_df.groupby('Ticker')['Close'].pct_change()
         thresholds = prices_df.groupby('Ticker')['Return'].quantile(self.drop_percentile).dropna().to_dict()
 
         # Save thresholds
@@ -129,8 +129,8 @@ class Analyzer:
         volatilities_df.sort_values(by = ['Ticker', 'Date'], inplace = True)
 
         # Calculate historical volatility
-        volatilities_df['Log_Return'] = np.log(volatilities_df['Close'] / volatilities_df.groupby('Ticker')['Close'].shift(1))
-        volatilities_df['Historical_Volatility'] = (
+        volatilities_df.loc[:, 'Log_Return'] = np.log(volatilities_df['Close'] / volatilities_df.groupby('Ticker')['Close'].shift(1))
+        volatilities_df.loc[:, 'Historical_Volatility'] = (
             volatilities_df.groupby('Ticker')['Log_Return']
             .rolling(window = volatility_rolling_window)
             .std()

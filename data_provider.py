@@ -3,6 +3,7 @@ import os
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import json
+import warnings
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetAssetsRequest
@@ -14,12 +15,14 @@ from alpaca.data.enums import DataFeed
 import yfinance as yf
 import wrds
 
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 class DataProvider:
     '''
     Data provider class
     '''
 
-    def __init__(self, pe_percentile, analyst_discount, req_score, min_market_cap, lookback_years, api_key, secret_key):
+    def __init__(self, pe_percentile, analyst_discount, req_score, min_market_cap, lookback_years, db_user, db_pass, api_key, secret_key):
         self.universe_cache_file = 'data/universe.json'
         self.prices_cache_file = 'data/historical_prices.parquet'
 
@@ -29,6 +32,9 @@ class DataProvider:
         
         self.min_market_cap = min_market_cap
         self.lookback_years = lookback_years
+
+        self.db_user = db_user
+        self.db_pass = db_pass
 
         self.trading_client = TradingClient(api_key, secret_key, paper = True)
         self.data_client = StockHistoricalDataClient(api_key, secret_key)
@@ -61,16 +67,22 @@ class DataProvider:
         
         # Fetch fundamentals
         fundamentals_df = self.fetch_fundamental_tickers(query)
-        if fundamentals_df is None or fundamentals_df.empty:
+        if fundamentals_df.empty:
             print('Ticker screener returned no fundamental data.')
             return pd.DataFrame()
+        print(f'{len(fundamentals_df)} tickers passed fundamental screening.')
         
         # Filter tradable
-        ticker_list = fundamentals_df['tic'].tolist()
+        print('Ensuring tradability...')
+        ticker_list = fundamentals_df['ticker'].tolist()
         tradable_tickers = self.filter_tradable_assets(ticker_list)
-        fundamentals_df = fundamentals_df[fundamentals_df['tic'].isin(tradable_tickers)].copy()
+        fundamentals_df = fundamentals_df[fundamentals_df['ticker'].isin(tradable_tickers)].copy()
+        if fundamentals_df.empty:
+            print('No tradable tickers found.')
+            return pd.DataFrame()
             
         # Fetch insider trading
+        print('Fetching insider trading...')
         insider_df = self.fetch_insider_trading(list(fundamentals_df.iterrows()))
         if insider_df is None or insider_df.empty:
             print('Insider trading fetch returned no data.')
@@ -81,9 +93,19 @@ class DataProvider:
 
         # Filter based on final score
         final_universe_df = insider_df[insider_df['score'] >= self.req_score]
-        final_universe_df = final_universe_df.rename(columns={'tic': 'Ticker'})
+        final_universe_df = final_universe_df.rename(columns={'ticker': 'Ticker'})
+
+        # Fundamentals score is no longer needed
+        if 'fundamentals_score' in final_universe_df.columns:
+            final_universe_df.drop(columns=['fundamentals_score'], inplace=True)
+
+        # Check if the final universe successfuly created
+        if final_universe_df is None or final_universe_df.empty:
+            print('Error fetching universe data.')
+            return pd.DataFrame()
 
         # Package universe data
+        final_universe_df = final_universe_df.astype(object).where(pd.notna(final_universe_df), None)
         current_month = datetime.now().strftime('%Y-%m')
         universe_records = final_universe_df.to_dict(orient='records')
         data = {
@@ -127,7 +149,7 @@ class DataProvider:
             return False
 
         # Set universe
-        self.universe_df = pd.DataFrame(data['Tickers'])
+        self.universe_df = pd.DataFrame(data['Universe_Data'])
         return True
     
     def clear_universe(self):
@@ -146,57 +168,72 @@ class DataProvider:
         start_date = (datetime.today() - timedelta(days=self.lookback_years * 365)).strftime('%Y-%m-%d')
         
         return f'''
-            WITH MarketCapScreen AS (
-                SELECT DISTINCT tic
+            WITH LatestUSDate AS (
+                SELECT MAX(datadate) as max_date 
+                FROM comp.secd 
+                WHERE fic = 'USA' AND tpci = '0' 
+                AND prccd IS NOT NULL AND cshoc IS NOT NULL
+            ),
+            MarketCapScreen AS (
+                SELECT DISTINCT tic AS ticker, prccd AS current_price
                 FROM comp.secd
-                WHERE datadate = (SELECT MAX(datadate) FROM comp.secd)
+                WHERE datadate = (SELECT max_date FROM LatestUSDate)
                 AND fic = 'USA' AND tpci = '0' 
-                AND (prccd * csho * 1000000) > {self.min_market_cap}
+                AND (prccd * cshoc) > {self.min_market_cap}
             ),
             HistoricalPE AS (
-                SELECT tic,
+                SELECT ticker,
                        percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_exi) as ttm_thresh,
                        percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_inc) as ntm_thresh
                 FROM wrdsapps.firm_ratio
                 WHERE public_date >= '{start_date}'
-                GROUP BY tic
+                GROUP BY ticker
             ),
             LatestPE AS (
-                SELECT tic, pe_exi, pe_inc
+                SELECT ticker, pe_exi, pe_inc
                 FROM (
-                    SELECT tic, pe_exi, pe_inc,
-                           ROW_NUMBER() OVER (PARTITION BY tic ORDER BY public_date DESC) as rn
+                    SELECT ticker, pe_exi, pe_inc,
+                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY public_date DESC) as rn
                     FROM wrdsapps.firm_ratio
                 ) tmp
                 WHERE rn = 1
             ),
             AnalystTargets AS (
-                SELECT ticker, ((mean_ptg - current_price) / mean_ptg) as discount_pct
-                FROM ibes.summary
+                SELECT oftic AS ticker, meanptg
+                FROM (
+                    SELECT oftic, meanptg,
+                           ROW_NUMBER() OVER (PARTITION BY oftic ORDER BY statpers DESC) as rn
+                    FROM ibes.ptgsum
+                ) tmp
+                WHERE rn = 1
             ),
             ScoredWRDS AS (
-               SELECT m.tic,
+               SELECT m.ticker,
                        l.pe_exi, 
                        l.pe_inc, 
-                       a.discount_pct,
+                       h.ttm_thresh,
+                       h.ntm_thresh,
+                       ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) as discount_pct,
                        (CASE WHEN l.pe_exi <= h.ttm_thresh THEN 1 ELSE 0 END) as ttm_score,
                        (CASE WHEN l.pe_inc <= h.ntm_thresh THEN 1 ELSE 0 END) as ntm_score,
-                       (CASE WHEN a.upside_pct >= {self.analyst_discount} THEN 1 ELSE 0 END) as target_score
+                       (CASE WHEN ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) >= {self.analyst_discount} THEN 1 ELSE 0 END) as analyst_score
                 FROM MarketCapScreen m
-                LEFT JOIN HistoricalPE h ON m.tic = h.tic
-                LEFT JOIN LatestPE l ON m.tic = l.tic
-                LEFT JOIN AnalystTargets a ON m.tic = a.ticker
+                LEFT JOIN HistoricalPE h ON m.ticker = h.ticker
+                LEFT JOIN LatestPE l ON m.ticker = l.ticker
+                LEFT JOIN AnalystTargets a ON m.ticker = a.ticker
             )
-            SELECT tic, 
-                   (ttm_score + ntm_score + target_score) as fundamentals_score,
+            SELECT ticker, 
+                   (ttm_score + ntm_score + COALESCE(analyst_score, 0)) as fundamentals_score,
                    ttm_score,
                    ntm_score,
-                   target_score,
+                   COALESCE(analyst_score, 0) as analyst_score,
                    pe_exi as raw_ttm_pe,
+                   ttm_thresh,
                    pe_inc as raw_ntm_pe,
+                   ntm_thresh,
                    discount_pct as raw_discount_pct
             FROM ScoredWRDS
-            WHERE (ttm_score + ntm_score + target_score) >= {self.req_score - 3}
+            WHERE (ttm_score + ntm_score + COALESCE(analyst_score, 0)) >= {self.req_score - 3}
         '''
 
     def fetch_fundamental_tickers(self, sql_query):
@@ -208,19 +245,21 @@ class DataProvider:
             Data on all passing tickers (pandas.DataFrame)
         '''
 
-        print('Fetching new universe tickers...')
         db = None
         try:
-            db = wrds.Connection()
+            db = wrds.Connection(
+                wrds_username = self.db_user, 
+                wrds_password = self.db_pass
+            )
             screened_data = db.raw_sql(sql_query)
             
             # Check if tickers exist
-            if screened_data is None and screened_data.empty:
+            if screened_data.empty:
                 print('No valid tickers for the universe.')
                 return pd.DataFrame()
             
             # Clean tickers
-            screened_data['tic'] = screened_data['tic'].str.replace('.', '-')
+            screened_data.loc[:, 'ticker'] = screened_data['ticker'].str.replace('.', '-')
             return screened_data
             
         except Exception as e:
@@ -246,7 +285,7 @@ class DataProvider:
         
         # Fetch insider trading data
         for _, row in tqdm(tickers, total=len(tickers), desc = 'Fetching Insider Activity'):
-            ticker = row['tic']
+            ticker = row['ticker']
             insider_score = 0
             net_shares = 0 
             
@@ -280,8 +319,6 @@ class DataProvider:
         Return:
             Tradable tickers (list str)
         '''
-        
-        print('Ensuring tradability...')
 
         # Check if tickers are passed
         if not tickers:
@@ -291,7 +328,6 @@ class DataProvider:
             search_params = GetAssetsRequest(
                 asset_class=AssetClass.US_EQUITY,
                 status='active',
-                feed=DataFeed.IEX
             )
             assets = self.trading_client.get_all_assets(search_params)
             tradable_symbols = {asset.symbol for asset in assets if asset.tradable}

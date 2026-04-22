@@ -10,12 +10,13 @@ from zoneinfo import ZoneInfo
 import time
 import pandas as pd
 import pandas_market_calendars as mcal
-import os
 
 @dataclass
 class AlertConfig:
 
     # Keys
+    db_user: str
+    db_pass: str
     data_api_key: str
     data_secret_key: str
     ai_api_key: str
@@ -26,11 +27,11 @@ class AlertConfig:
     volatility_rolling_window: int
 
     # Score config
-    req_score: str
+    req_score: int
 
     # Universe configs
-    pe_percentile: str
-    analyst_discount: str
+    pe_percentile: float
+    analyst_discount: float
 
     # Analysis configs
     drop_percentile: float
@@ -58,6 +59,8 @@ class AlertSystem:
             pe_percentile = config.pe_percentile,
             analyst_discount = config.analyst_discount,
             req_score = config.req_score,
+            db_user = config.db_user,
+            db_pass = config.db_pass,
             api_key = config.data_api_key, 
             secret_key = config.data_secret_key, 
             min_market_cap = config.min_market_cap, 
