@@ -66,6 +66,10 @@ class AlertSystem:
             min_market_cap = config.min_market_cap, 
             lookback_years = config.lookback_years
             )
+        
+    # =============================================================================
+    # MONTHLY PREP
+    # =============================================================================
     
     def monthly_prep_system(self):
         '''
@@ -87,6 +91,10 @@ class AlertSystem:
 
         except Exception as e:
             print(f'Error during monthly prep: {e}')
+
+    # =============================================================================
+    # DAILY PREP
+    # =============================================================================
 
     def daily_prep_system(self):
         '''
@@ -115,6 +123,11 @@ class AlertSystem:
 
         except Exception as e:
             print(f'Error during daily prep: {e}')
+
+
+    # =============================================================================
+    # DAILY SCAN
+    # =============================================================================
 
     def run_system(self):
         '''
@@ -145,23 +158,25 @@ class AlertSystem:
                 drop_percentage = self.config.drop_percent,
                 volatility_percentile = self.config.volatility_percentile,
                 volatility_rolling_window = self.config.volatility_rolling_window
-                )
+            )
             
             self.alert_manager = AlertManager(
                 sender_email = self.config.sender_email, 
                 sender_password = self.config.sender_password, 
                 to_emails = self.config.to_emails
-                )
+            )
             
             daily_stats = DailyStats(self.config)
-            valuation_agent = ValuationAgent(self.config.ai_api_key)
+            # valuation_agent = ValuationAgent(self.config.ai_api_key) -- TEMPRORARILY REMOVED
             
             # Load thresholds
             analyzer.load_returns_thresholds()
             analyzer.load_volatilities_thresholds()
 
-            # Define tickers
-            tickers = list(analyzer.returns_thresholds.keys())
+            # Load universe
+            self.data.load_universe()
+            universe_df = self.data.universe_df
+            tickers = universe_df['Ticker'].tolist()
 
             # Check if tickers is populated
             if not tickers:
@@ -176,26 +191,23 @@ class AlertSystem:
                 now = datetime.now(ZoneInfo('America/New_York'))
                 print(f"[{now.strftime('%H:%M:%S')}] Market Open: Scanning {len(tickers)} tickers...")
                 
-                # Fetch live prices
+                # Fetch live prices and check for returns drops
                 live_prices_df = self.data.fetch_live_prices(tickers)
-
-                # Check for returns drops
                 drops_df = analyzer.find_drops(live_prices_df)
                 
-                # Fetch IV
-                implied_volatilities_df = self.data.fetch_live_volatilites(drops_df)
+                # Fetch IV and check for high IV
+                live_iv_df = self.data.fetch_live_volatilites(live_prices_df)
+                high_iv_df = analyzer.find_high_iv(live_iv_df)
 
-                # Check for high IV
-                high_iv_df = analyzer.find_high_iv(implied_volatilities_df)
+                # Scoring and filtering
+                alerts_df = analyzer.calculate_scores(universe_df, drops_df, high_iv_df, self.config.req_score)
+                new_alerts_df = self.filter_new_alerts(alerts_df, old_alerts)
 
-                # Filter for new alerts
-                new_alerts_df = self.filter_new_alerts(high_iv_df, old_alerts)
-
-                # Add in valuation analysis
-                enriched_df = valuation_agent.analyze_tickers(self.config.prompt, self.config.temperature, new_alerts_df)
+                # Add in valuation analysis -- TEMPRORARILY REMOVED
+                # enriched_df = valuation_agent.analyze_tickers(self.config.prompt, self.config.temperature, new_alerts_df)
                 
                 # Send alerts
-                self.alert_manager.process_alerts(enriched_df)
+                self.alert_manager.process_alerts(new_alerts_df)
 
                 # Update stats if there is meaningful information
                 if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
@@ -203,7 +215,7 @@ class AlertSystem:
                         'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
                         'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
                         'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
-                        'Alerts': enriched_df.to_dict(orient='records') if not new_alerts_df.empty else []
+                        'Alerts': new_alerts_df.to_dict(orient='records') if not new_alerts_df.empty else []
                     })
                 
                 # Add delay
@@ -214,7 +226,7 @@ class AlertSystem:
             # Save statistics and run prep at market close
             if now.hour >= 16:
                 print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
-                daily_stats.save_stats(len(tickers))
+                daily_stats.save_stats()
                 self.daily_prep_system()
             else:
                 print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
@@ -266,3 +278,4 @@ class AlertSystem:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] Scan complete: Tickers detected, but already alerted today.")
 
         return new_alerts_df
+

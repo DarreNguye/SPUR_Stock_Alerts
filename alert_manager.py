@@ -67,6 +67,15 @@ class AlertManager:
             iv_pct = row['Implied_Volatility'] * 100
             volatility_threshold_pct = row['Volatility_Threshold'] * 100
 
+            # Get scores
+            composite = row.get('Composite_Score', 'N/A')
+            universe_score = row.get('Universe_Score', 'N/A')
+            ttm = row.get('TTM_Score', 'N/A')
+            ntm = row.get('NTM_Score', 'N/A')
+            analyst = row.get('Analyst_Score', 'N/A')
+            insider = row.get('Insider_Score', 'N/A')
+            
+
             # Print info
             print(f'{ticker:<10} | Drop:               {live_return_pct:>7.2f}% | Return Threshold:     {returns_threshold_pct:>7.2f}%')
             print(f'{"":<10} | Implied Volatility: {iv_pct:>7.2f}% | Volatility Threshold: {volatility_threshold_pct:>7.2f}%')
@@ -76,6 +85,8 @@ class AlertManager:
                 print(f"   Option ATM: ${row['ATM_Strike']:.2f}  (Expires: {row['Expiration']})")
             else:
                 print("   Option ATM: N/A (No options chain available)")
+
+            print(f'   Composite Score: {composite} | Universe: {universe_score} (TTM:{ttm} NTM:{ntm} Analyst:{analyst} Insider:{insider})')
 
             # Print context
             if 'Context' in row and pd.notnull(row['Context']):
@@ -130,6 +141,12 @@ class AlertManager:
                 <th>Prev Close</th>
                 <th>Option Expiration</th>
                 <th>ATM Strike</th>
+                <th>Composite Score</th>
+                <th>Universe Score</th>
+                <th>TTM Score</th>
+                <th>NTM Score</th>
+                <th>Analyst Score</th>
+                <th>Insider Score</th>
               </tr>
         '''
         
@@ -154,6 +171,12 @@ class AlertManager:
                 <td>${row['Prev_Close']:.2f}</td>
                 <td>{exp_display}</td>
                 <td>{strike_display}</td>
+                <td>{row.get('Composite_Score', 'N/A')}</td>
+                <td>{row.get('Universe_Score', 'N/A')}</td>
+                <td>{row.get('TTM_Score', 'N/A')}</td>
+                <td>{row.get('NTM_Score', 'N/A')}</td>
+                <td>{row.get('Analyst_Score', 'N/A')}</td>
+                <td>{row.get('Insider_Score', 'N/A')}</td>
               </tr>
             """
 

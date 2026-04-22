@@ -74,9 +74,9 @@ class DataProvider:
         
         # Filter tradable
         print('Ensuring tradability...')
-        ticker_list = fundamentals_df['ticker'].tolist()
+        ticker_list = fundamentals_df['Ticker'].tolist()
         tradable_tickers = self.filter_tradable_assets(ticker_list)
-        fundamentals_df = fundamentals_df[fundamentals_df['ticker'].isin(tradable_tickers)].copy()
+        fundamentals_df = fundamentals_df[fundamentals_df['Ticker'].isin(tradable_tickers)].copy()
         if fundamentals_df.empty:
             print('No tradable tickers found.')
             return pd.DataFrame()
@@ -89,15 +89,14 @@ class DataProvider:
             return pd.DataFrame()
         
         # Score calculation
-        insider_df['score'] = insider_df['fundamentals_score'] + insider_df['insider_score']
+        insider_df['Universe_Score'] = insider_df['Fundamentals_Score'] + insider_df['Insider_Score']
 
         # Filter based on final score
-        final_universe_df = insider_df[insider_df['score'] >= self.req_score]
-        final_universe_df = final_universe_df.rename(columns={'ticker': 'Ticker'})
+        final_universe_df = insider_df[insider_df['Universe_Score'] >= self.req_score - 2]
 
         # Fundamentals score is no longer needed
-        if 'fundamentals_score' in final_universe_df.columns:
-            final_universe_df.drop(columns=['fundamentals_score'], inplace=True)
+        if 'Fundamentals_Score' in final_universe_df.columns:
+            final_universe_df = final_universe_df.drop(columns=['Fundamentals_Score'])
 
         # Check if the final universe successfuly created
         if final_universe_df is None or final_universe_df.empty:
@@ -222,16 +221,16 @@ class DataProvider:
                 LEFT JOIN LatestPE l ON m.ticker = l.ticker
                 LEFT JOIN AnalystTargets a ON m.ticker = a.ticker
             )
-            SELECT ticker, 
-                   (ttm_score + ntm_score + COALESCE(analyst_score, 0)) as fundamentals_score,
-                   ttm_score,
-                   ntm_score,
-                   COALESCE(analyst_score, 0) as analyst_score,
-                   pe_exi as raw_ttm_pe,
-                   ttm_thresh,
-                   pe_inc as raw_ntm_pe,
-                   ntm_thresh,
-                   discount_pct as raw_discount_pct
+            SELECT ticker as "Ticker", 
+                   (ttm_score + ntm_score + COALESCE(analyst_score, 0)) as "Fundamentals_Score",
+                   ttm_score as "TTM_Score",
+                   ntm_score as "NTM_Score",
+                   COALESCE(analyst_score, 0) as "Analyst_Score",
+                   pe_exi as "Raw_TTM_PE",
+                   ttm_thresh as "TTM_Threshold",
+                   pe_inc as "Raw_NTM_PE",
+                   ntm_thresh as "NTM_Threshold",
+                   discount_pct as "Raw_Discount_pct"
             FROM ScoredWRDS
             WHERE (ttm_score + ntm_score + COALESCE(analyst_score, 0)) >= {self.req_score - 3}
         '''
@@ -259,7 +258,7 @@ class DataProvider:
                 return pd.DataFrame()
             
             # Clean tickers
-            screened_data.loc[:, 'ticker'] = screened_data['ticker'].str.replace('.', '-')
+            screened_data.loc[:, 'Ticker'] = screened_data['Ticker'].str.replace('.', '-')
             return screened_data
             
         except Exception as e:
@@ -285,7 +284,7 @@ class DataProvider:
         
         # Fetch insider trading data
         for _, row in tqdm(tickers, total=len(tickers), desc = 'Fetching Insider Activity'):
-            ticker = row['ticker']
+            ticker = row['Ticker']
             insider_score = 0
             net_shares = 0 
             
@@ -305,8 +304,8 @@ class DataProvider:
             
             # Convert row to dictionary
             row_dict = row.to_dict()
-            row_dict['net_insider_shares'] = net_shares
-            row_dict['insider_score'] = insider_score
+            row_dict['Net_Insider_Shares'] = net_shares
+            row_dict['Insider_Score'] = insider_score
             rows.append(row_dict)
                 
         return pd.DataFrame(rows)
@@ -335,7 +334,7 @@ class DataProvider:
             return list(set(tickers) & tradable_symbols)
             
         except Exception as e:
-            print(f'Error filtering tradable assets via Alpaca: {e}')
+            print(f'Error filtering tradable assets: {e}')
             return []
     
     # =============================================================================
@@ -566,7 +565,7 @@ class DataProvider:
 
         # Check if tickers are provided
         if not tickers:
-            print('No tickers provided.')
+            print('No tickers provided for live prices.')
             return pd.DataFrame()
 
         # Chunk tickers
@@ -609,25 +608,25 @@ class DataProvider:
     # LIVE IV FUNCTIONS
     # =============================================================================
         
-    def fetch_live_volatilites(self, drops_df):
+    def fetch_live_volatilites(self, live_prices_df):
         '''
         Fetch live implied volatility data for a ATM call option expiring 30 days from now for a list of tickers
         Parameters:
-            drops_df: Tickers and live price data from analyzer.find_drops (pandas.DataFrame)
+            live_prices_df: Tickers and live price data (pandas.DataFrame)
         Return:
             Ticker and implied volsatility (pandas.DataFrame)
         '''
 
         # Check if there are drops
-        if drops_df is None or drops_df.empty:
-            print('No drops provided.')
+        if live_prices_df is None or live_prices_df.empty:
+            print('No tickers provided for live IV.')
             return pd.DataFrame()
         
         # Store data
         final_rows = []
 
         # Iterate through rows and and fetch implied volatility
-        for _, row in tqdm(drops_df.iterrows(), desc = 'Fetching Implied Volatility', unit = ' ticker'):
+        for _, row in tqdm(live_prices_df.iterrows(), desc = 'Fetching Implied Volatility', unit = ' ticker'):
             iv = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
             row_dict = row.to_dict()
 
