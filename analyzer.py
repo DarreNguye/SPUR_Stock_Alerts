@@ -249,11 +249,14 @@ class Analyzer:
             Combined universe, drops, and high iv data above a certain score
         '''
 
+        # Drop duplicated column
+        iv_clean_df = high_iv_df.drop(columns=['Live_Price', 'Prev_Close'], errors='ignore')
+
         # Merge data
         combined_df = (
             universe_df
             .merge(drops_df, on = 'Ticker')
-            .merge(high_iv_df, on = 'Ticker')
+            .merge(iv_clean_df, on = 'Ticker')
         ).copy()
 
         # Check if there is data
