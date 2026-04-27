@@ -85,8 +85,7 @@ class AlertManager:
                 print(f"   Option ATM: ${row['ATM_Strike']:.2f}  (Expires: {row['Expiration']})")
             else:
                 print("   Option ATM: N/A (No options chain available)")
-
-            print(f'   Composite Score: {composite} | Universe: {universe_score} (TTM:{ttm} NTM:{ntm} Analyst:{analyst} Insider:{insider})')
+            print(f'   Scores: Composite={row.get("Composite_Score","N/A")} | Universe={row.get("Universe_Score","N/A")} | Returns={row.get("Returns_Score","N/A")} | IV={row.get("IV_Score","N/A")}')
 
             # Print context
             if 'Context' in row and pd.notnull(row['Context']):
@@ -142,6 +141,8 @@ class AlertManager:
                 <th>Option Expiration</th>
                 <th>ATM Strike</th>
                 <th>Composite Score</th>
+                <th>Returns Score</th>
+                <th>IV Score</th>
                 <th>Universe Score</th>
                 <th>TTM Score</th>
                 <th>NTM Score</th>
@@ -163,15 +164,17 @@ class AlertManager:
             html += f"""
               <tr>
                 <td><strong>{row['Ticker']}</strong></td>
-                <td style="color: red; font-weight: bold;">{row['Live_Return']*100:.2f}%</td>
+                <td>{row['Live_Return']*100:.2f}%</td>
                 <td>{row['Returns_Threshold']*100:.2f}%</td>
-                <td style="color: green; font-weight: bold;">{row['Implied_Volatility']*100:.2f}%</td>
+                <td>{row['Implied_Volatility']*100:.2f}%</td>
                 <td>{row['Volatility_Threshold']*100:.2f}%</td>
                 <td>${row['Live_Price']:.2f}</td>
                 <td>${row['Prev_Close']:.2f}</td>
                 <td>{exp_display}</td>
                 <td>{strike_display}</td>
                 <td>{row.get('Composite_Score', 'N/A')}</td>
+                <td>{row.get('Returns_Score', 'N/A')}</td>
+                <td>{row.get('IV_Score', 'N/A')}</td>
                 <td>{row.get('Universe_Score', 'N/A')}</td>
                 <td>{row.get('TTM_Score', 'N/A')}</td>
                 <td>{row.get('NTM_Score', 'N/A')}</td>
