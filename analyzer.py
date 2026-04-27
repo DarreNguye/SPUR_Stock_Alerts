@@ -268,7 +268,7 @@ class Analyzer:
         combined_df['Composite_Score'] = combined_df['Universe_Score'] + combined_df['Returns_Score'] + combined_df['IV_Score']
         combined_df = combined_df[
             (combined_df['Composite_Score'] >= req_score) & 
-            (combined_df['Returns_Score'] + combined_df['IV_Score']) >= 0
+            (combined_df['Returns_Score'] + combined_df['IV_Score'] >= 0)
         ]
 
         return combined_df
