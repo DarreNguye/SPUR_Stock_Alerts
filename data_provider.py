@@ -158,7 +158,7 @@ class DataProvider:
 
     def universe_query(self):
         '''
-        Constructs an SQL query for TTM P/E, NTM P/E, and Analyst Targets
+        Constructs an SQL query for TTM P/E, NTM P/E, Analyst Targets, and Industry P/E
         Parameters:
             None
         Return:
@@ -197,6 +197,21 @@ class DataProvider:
                 ) tmp
                 WHERE rn = 1
             ),
+            IndustryMap AS (
+                SELECT DISTINCT s.tic AS ticker, SUBSTRING(c.sic, 1, 2) AS industry_code
+                FROM comp.secd s
+                JOIN comp.company c ON s.gvkey = c.gvkey
+                WHERE s.datadate = (SELECT max_date FROM LatestUSDate)
+            ),
+            -- UPDATED: Now uses your dynamic pe_percentile variable instead of 0.5
+            IndustryPE AS (
+                SELECT i.industry_code,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY l.pe_exi) as ind_ttm_thresh,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY l.pe_inc) as ind_ntm_thresh
+                FROM LatestPE l
+                JOIN IndustryMap i ON l.ticker = i.ticker
+                GROUP BY i.industry_code
+            ),
             AnalystTargets AS (
                 SELECT oftic AS ticker, meanptg
                 FROM (
@@ -212,27 +227,41 @@ class DataProvider:
                        l.pe_inc, 
                        h.ttm_thresh,
                        h.ntm_thresh,
+                       ind.ind_ttm_thresh,
+                       ind.ind_ntm_thresh,
                        ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) as discount_pct,
+                       
                        (CASE WHEN l.pe_exi <= h.ttm_thresh THEN 1 ELSE 0 END) as ttm_score,
                        (CASE WHEN l.pe_inc <= h.ntm_thresh THEN 1 ELSE 0 END) as ntm_score,
-                       (CASE WHEN ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) >= {self.analyst_discount} THEN 1 ELSE 0 END) as analyst_score
+                       (CASE WHEN ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) >= {self.analyst_discount} THEN 1 ELSE 0 END) as analyst_score,
+                       
+                       -- UPDATED: Checking against the new dynamic threshold aliases
+                       (CASE WHEN l.pe_exi <= ind.ind_ttm_thresh THEN 1 ELSE 0 END) as ind_ttm_score,
+                       (CASE WHEN l.pe_inc <= ind.ind_ntm_thresh THEN 1 ELSE 0 END) as ind_ntm_score
+                       
                 FROM MarketCapScreen m
                 LEFT JOIN HistoricalPE h ON m.ticker = h.ticker
                 LEFT JOIN LatestPE l ON m.ticker = l.ticker
                 LEFT JOIN AnalystTargets a ON m.ticker = a.ticker
+                LEFT JOIN IndustryMap imap ON m.ticker = imap.ticker
+                LEFT JOIN IndustryPE ind ON imap.industry_code = ind.industry_code
             )
             SELECT ticker as "Ticker", 
-                   (ttm_score + ntm_score + COALESCE(analyst_score, 0)) as "Fundamentals_Score",
+                   (ttm_score + ntm_score + COALESCE(analyst_score, 0) + ind_ttm_score + ind_ntm_score) as "Fundamentals_Score",
                    ttm_score as "TTM_Score",
                    ntm_score as "NTM_Score",
+                   ind_ttm_score as "Ind_TTM_Score",
+                   ind_ntm_score as "Ind_NTM_Score",
                    COALESCE(analyst_score, 0) as "Analyst_Score",
                    pe_exi as "Raw_TTM_PE",
                    ttm_thresh as "TTM_Threshold",
+                   ind_ttm_thresh as "Ind_TTM_Threshold", -- Renamed output column
                    pe_inc as "Raw_NTM_PE",
                    ntm_thresh as "NTM_Threshold",
+                   ind_ntm_thresh as "Ind_NTM_Threshold", -- Renamed output column
                    discount_pct as "Raw_Discount_pct"
             FROM ScoredWRDS
-            WHERE (ttm_score + ntm_score + COALESCE(analyst_score, 0)) >= {self.req_score - 3}
+            WHERE (ttm_score + ntm_score + COALESCE(analyst_score, 0) + ind_ttm_score + ind_ntm_score) >= {self.req_score - 3}
         '''
 
     def fetch_fundamental_tickers(self, sql_query):

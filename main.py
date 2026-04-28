@@ -25,7 +25,7 @@ def main():
         data_api_key = os.getenv('ALPACA_API_KEY'),
         data_secret_key = os.getenv('ALPACA_SECRET_KEY'),
         ai_api_key = os.getenv('GEMINI_API_KEY'),
-        req_score = 4,
+        req_score = 6,
         pe_percentile = 0.10,
         analyst_discount = 0.05,
         min_market_cap = 10_000_000_000,

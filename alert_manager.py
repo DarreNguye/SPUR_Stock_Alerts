@@ -72,6 +72,8 @@ class AlertManager:
             universe_score = row.get('Universe_Score', 'N/A')
             ttm = row.get('TTM_Score', 'N/A')
             ntm = row.get('NTM_Score', 'N/A')
+            ind_ttm = row.get('Ind_TTM_Score', 'N/A')
+            ind_ntm = row.get('Ind_NTM_Score', 'N/A')
             analyst = row.get('Analyst_Score', 'N/A')
             insider = row.get('Insider_Score', 'N/A')
             
@@ -85,7 +87,7 @@ class AlertManager:
                 print(f"   Option ATM: ${row['ATM_Strike']:.2f}  (Expires: {row['Expiration']})")
             else:
                 print("   Option ATM: N/A (No options chain available)")
-            print(f'   Scores: Composite={row.get("Composite_Score","N/A")} | Universe={row.get("Universe_Score","N/A")} | Returns={row.get("Returns_Score","N/A")} | IV={row.get("IV_Score","N/A")}')
+            print(f'   Composite Score: {composite} | Universe: {universe_score} (TTM:{ttm} NTM:{ntm} IndTTM:{ind_ttm} IndNTM:{ind_ntm} Analyst:{analyst} Insider:{insider})')
 
             # Print context
             if 'Context' in row and pd.notnull(row['Context']):
@@ -146,6 +148,8 @@ class AlertManager:
                 <th>Universe Score</th>
                 <th>TTM Score</th>
                 <th>NTM Score</th>
+                <th>Ind TTM Score</th>
+                <th>Ind NTM Score</th>
                 <th>Analyst Score</th>
                 <th>Insider Score</th>
               </tr>
@@ -178,6 +182,8 @@ class AlertManager:
                 <td>{row.get('Universe_Score', 'N/A')}</td>
                 <td>{row.get('TTM_Score', 'N/A')}</td>
                 <td>{row.get('NTM_Score', 'N/A')}</td>
+                <td>{row.get('Ind_TTM_Score', 'N/A')}</td>
+                <td>{row.get('Ind_NTM_Score', 'N/A')}</td>
                 <td>{row.get('Analyst_Score', 'N/A')}</td>
                 <td>{row.get('Insider_Score', 'N/A')}</td>
               </tr>
