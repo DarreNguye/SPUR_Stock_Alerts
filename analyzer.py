@@ -237,38 +237,29 @@ class Analyzer:
     # SCORE FUNCTIONS
     # =============================================================================
         
-    def calculate_scores(self, universe_df, drops_df, high_iv_df, req_score):
+    def calculate_scores(self, universe_df, high_iv_df, req_score):
         '''
         Calculates the composite daily score across universe, drops, and high iv dataframes
         Parameters:
             universe_df: Data for tickers in the universe (pandas.DataFrame)
-            drops_df: Data for tickers with signficiant drops (pandas.DataFrame)
             high_iv_df: Data for tickers with high IV (pandas.DataFrame)
             req_score: The required score to alert (int)
         Return:
             Combined universe, drops, and high iv data above a certain score
         '''
 
-        # Drop duplicated column
-        iv_clean_df = high_iv_df.drop(columns=['Live_Price', 'Prev_Close'], errors='ignore')
+        # Check if tickers made through screener
+        if high_iv_df is None or high_iv_df.empty:
+            return pd.DataFrame()
 
         # Merge data
-        combined_df = (
-            universe_df
-            .merge(drops_df, on = 'Ticker')
-            .merge(iv_clean_df, on = 'Ticker')
-        ).copy()
-
-        # Check if there is data
-        if combined_df.empty:
-            print('Error calculating scores.')
-            return pd.DataFrame()
+        combined_df = universe_df.merge(high_iv_df, on = 'Ticker').copy()
 
         # Calculate composite score and filter
         combined_df['Composite_Score'] = combined_df['Universe_Score'] + combined_df['Returns_Score'] + combined_df['IV_Score']
         combined_df = combined_df[
             (combined_df['Composite_Score'] >= req_score) & 
-            (combined_df['Returns_Score'] + combined_df['IV_Score'] >= 0)
+            (combined_df['Returns_Score'] + combined_df['IV_Score'] == 2)
         ]
 
         return combined_df
