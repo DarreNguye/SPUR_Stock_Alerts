@@ -201,7 +201,7 @@ class AlertSystem:
                 high_iv_df = analyzer.find_high_iv(live_iv_df)
 
                 # Scoring and filtering
-                alerts_df = analyzer.calculate_scores(universe_df, drops_df, high_iv_df, self.config.req_score)
+                alerts_df = analyzer.calculate_scores(universe_df, high_iv_df, self.config.req_score)
                 new_alerts_df = self.filter_new_alerts(alerts_df, old_alerts)
 
                 # Add in valuation analysis -- TEMPRORARILY REMOVED
