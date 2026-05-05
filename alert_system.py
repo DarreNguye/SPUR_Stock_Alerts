@@ -194,7 +194,10 @@ class AlertSystem:
                 # Fetch live prices and check for returns drops
                 live_prices_df = self.data.fetch_live_prices(tickers)
                 drops_df = analyzer.find_drops(live_prices_df)
-                strict_drops_df = drops_df[drops_df['Returns_Score'] == 1].copy()
+                if not drops_df.empty and 'Returns_Score' in drops_df.columns:
+                    strict_drops_df = drops_df[drops_df['Returns_Score'] == 1].copy()
+                else:
+                    strict_drops_df = pd.DataFrame()
                 
                 # Fetch IV and check for high IV
                 live_iv_df = self.data.fetch_live_volatilites(strict_drops_df)
