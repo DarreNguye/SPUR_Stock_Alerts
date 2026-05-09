@@ -286,8 +286,8 @@ class DataProvider:
                 print('No valid tickers for the universe.')
                 return pd.DataFrame()
             
-            # Clean tickers
-            screened_data.loc[:, 'Ticker'] = screened_data['Ticker'].str.replace('.', '-')
+            # Clean tickers (regex=False to treat '.' as a literal character, not a wildcard)
+            screened_data.loc[:, 'Ticker'] = screened_data['Ticker'].str.replace('.', '-', regex=False)
             return screened_data
             
         except Exception as e:
@@ -457,10 +457,11 @@ class DataProvider:
         
         new_dfs = []
 
-        # Fetch updated data for existing tickers
+        # Fetch updated data for existing tickers (start one day after last cache to avoid re-fetching)
         if existing_tickers and last_cache_date.date() < end_date.date():
-            print(f"Updating {len(existing_tickers)} existing tickers from {last_cache_date.strftime('%Y-%m-%d')}...")
-            updated_existing_dfs = self.fetch_prices_data(existing_tickers, last_cache_date, end_date)
+            fetch_start = last_cache_date + timedelta(days=1)
+            print(f"Updating {len(existing_tickers)} existing tickers from {fetch_start.strftime('%Y-%m-%d')}...")
+            updated_existing_dfs = self.fetch_prices_data(existing_tickers, fetch_start, end_date)
             new_dfs.extend(updated_existing_dfs)
 
         # Fetch full history for new tickers
@@ -553,7 +554,7 @@ class DataProvider:
         formatted_df = raw_df[['Ticker', 'Date', 'Close']].copy()
         formatted_df['Close'] = pd.to_numeric(formatted_df['Close'], errors = 'coerce')
         formatted_df.dropna(subset = ['Close'], inplace = True)
-        formatted_df['Date'] = pd.to_datetime(formatted_df['Date']).dt.tz_localize(None)
+        formatted_df['Date'] = pd.to_datetime(formatted_df['Date']).dt.tz_convert(None)
         
         return formatted_df
     
@@ -655,7 +656,7 @@ class DataProvider:
         final_rows = []
 
         # Iterate through rows and and fetch implied volatility
-        for _, row in tqdm(live_prices_df.iterrows(), desc = 'Fetching Implied Volatility', unit = ' ticker'):
+        for _, row in tqdm(live_prices_df.iterrows(), total=len(live_prices_df), desc = 'Fetching Implied Volatility', unit = ' ticker'):
             iv = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
             row_dict = row.to_dict()
 

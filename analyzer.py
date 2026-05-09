@@ -18,7 +18,7 @@ class Analyzer:
         self.volatility_percentile = volatility_percentile
         self.volatility_rolling_window = volatility_rolling_window
 
-        self.returns_thresholds = {}
+        self.returns_thresholds = None   # None = not yet loaded; {} = loaded but empty
         self.volatilities_thresholds = None
     
     # =============================================================================
@@ -37,6 +37,7 @@ class Analyzer:
         # Check if there is data
         if self.price_data is None or self.price_data.empty:
             print('No historical prices available to calculate thresholds.')
+            self.returns_thresholds = {}   # Mark as attempted so load won't retry endlessly
             return
 
         print(f'Calculating {self.drop_percentile} percentile thresholds...')
@@ -67,8 +68,8 @@ class Analyzer:
             None
         '''
 
-        # Check if thresholds is already populated
-        if self.returns_thresholds:
+        # Check if thresholds are already loaded (use is not None so an empty dict {} doesn't re-trigger)
+        if self.returns_thresholds is not None:
             return
 
         # Calculate thresholds if the file does not exist
@@ -76,7 +77,7 @@ class Analyzer:
             print('Returns thresholds file not found. Calculating thresholds...')
             self.calculate_returns_thresholds()
             return
-            
+
         # Load thresholds from file
         with open(self.returns_thresholds_file, 'r') as f:
             self.returns_thresholds = json.load(f)
@@ -91,17 +92,18 @@ class Analyzer:
             Tickers that are below the threshold (pandas.DataFrame)
         '''
 
-        # Safe copy
-        drops_df = live_prices_df.copy()
-
-        # Check if live_df has data
-        if drops_df is None or drops_df.empty:
+        # Check if live_df has data (must check before .copy() — None.copy() would crash)
+        if live_prices_df is None or live_prices_df.empty:
             print('No live prices available.')
             return pd.DataFrame()
+
+        # Safe copy
+        drops_df = live_prices_df.copy()
         
         # Calculate live returns
         drops_df['Live_Return'] = (drops_df['Live_Price'] - drops_df['Prev_Close']) / drops_df['Prev_Close']
-        drops_df['Returns_Threshold'] = drops_df['Ticker'].map(self.returns_thresholds).fillna(-self.drop_percentage)
+        thresholds = self.returns_thresholds if self.returns_thresholds is not None else {}
+        drops_df['Returns_Threshold'] = drops_df['Ticker'].map(thresholds).fillna(-self.drop_percentage)
 
         # Score tickers where drop is below threshold
         drops_df['Returns_Score'] = (
@@ -165,7 +167,8 @@ class Analyzer:
         volatilities_df = self.calculate_historical_volatilities(self.volatility_rolling_window)
         if volatilities_df is None or volatilities_df.empty:
             print('Volatilities could not be calculated.')
-            return 
+            self.volatilities_thresholds = {}  # Mark as attempted so load won't retry endlessly
+            return
 
         print(f'Calculating {self.volatility_percentile} percentile thresholds...')
 
@@ -190,8 +193,8 @@ class Analyzer:
             None
         '''
 
-        # Check if thresholds is already populated
-        if self.volatilities_thresholds:
+        # Check if thresholds are already loaded (use is not None so an empty dict {} doesn't re-trigger)
+        if self.volatilities_thresholds is not None:
             return
 
         # Calculate thresholds if the file does not exist
@@ -199,7 +202,7 @@ class Analyzer:
             print('Volatilities thresholds file not found. Calculating thresholds...')
             self.calculate_volatilities_thresholds()
             return
-        
+
         # Load thresholds from file
         with open(self.volatilities_thresholds_file, 'r') as f:
             self.volatilities_thresholds = json.load(f)
@@ -214,15 +217,16 @@ class Analyzer:
             Tickers that are above the threshold (pandas.DataFrame)
         '''
 
+        # Check if live_iv_df has data (must check before .copy() — None.copy() would crash)
+        if live_iv_df is None or live_iv_df.empty:
+            return pd.DataFrame()
+
         # Safe copy
         high_iv_df = live_iv_df.copy()
 
-        # Check if live_iv_df has data
-        if high_iv_df is None or high_iv_df.empty:
-            return pd.DataFrame()
-
         # Map thresholds
-        high_iv_df['Volatility_Threshold'] = high_iv_df['Ticker'].map(self.volatilities_thresholds)
+        thresholds = self.volatilities_thresholds if self.volatilities_thresholds is not None else {}
+        high_iv_df['Volatility_Threshold'] = high_iv_df['Ticker'].map(thresholds)
 
         # Drop NaN
         high_iv_df.dropna(subset = ['Volatility_Threshold', 'Implied_Volatility'], inplace = True)
