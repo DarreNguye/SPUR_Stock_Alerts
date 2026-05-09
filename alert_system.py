@@ -45,7 +45,7 @@ class AlertConfig:
     # Email configs
     sender_email: str
     sender_password: str
-    to_emails: str
+    to_emails: list
     
 
 class AlertSystem:
@@ -173,9 +173,11 @@ class AlertSystem:
             analyzer.load_returns_thresholds()
             analyzer.load_volatilities_thresholds()
 
-            # Load universe
-            self.data.load_universe()
-            universe_df = self.data.universe_df
+            # Load universe (get_universe falls back to fetching if the cache is missing or stale)
+            universe_df = self.data.get_universe()
+            if universe_df is None or universe_df.empty:
+                print('Universe unavailable. Aborting scan.')
+                return
             tickers = universe_df['Ticker'].tolist()
 
             # Check if tickers is populated
@@ -227,13 +229,10 @@ class AlertSystem:
             
             now = datetime.now(ZoneInfo('America/New_York'))
 
-            # Save statistics and run prep at market close
-            if now.hour >= 16:
-                print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
-                daily_stats.save_stats()
-                self.daily_prep_system()
-            else:
-                print(f"[{now.strftime('%H:%M:%S')}] Market is not open.")
+            # Market has closed (normal or early close) — always save stats and run prep
+            print(f"[{now.strftime('%H:%M:%S')}] Market now closed. Running cleanup...")
+            daily_stats.save_stats()
+            self.daily_prep_system()
 
         except Exception as e:
             print(f'Error during live scan: {e}')
