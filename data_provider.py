@@ -2,10 +2,16 @@ import pandas as pd
 import os
 import time
 import random
+import logging
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import json
 import warnings
+
+# yfinance logs HTTP errors (including 429) at ERROR level instead of raising — silence the
+# stream so the tqdm progress bar isn't drowned in 'Too Many Requests' messages.
+# We still detect the failure via the helper's None-check below.
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import GetAssetsRequest
@@ -18,6 +24,15 @@ import yfinance as yf
 import wrds
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
+
+# Try to use curl_cffi to impersonate Chrome's TLS fingerprint. Yahoo Finance heuristically
+# rate-limits clients that look like Python's default urllib/requests; impersonating Chrome
+# bypasses most of that throttling. Falls back to the default session if curl_cffi isn't installed.
+try:
+    from curl_cffi import requests as _cffi_requests
+    _YF_SESSION = _cffi_requests.Session(impersonate='chrome')
+except ImportError:
+    _YF_SESSION = None
 
 class DataProvider:
     '''
@@ -419,17 +434,20 @@ class DataProvider:
     def _fetch_insider_with_retry(self, ticker, max_attempts=4):
         '''
         Fetch yfinance insider_transactions with exponential backoff on Yahoo 429s.
-        Returns the DataFrame on success (which may be empty), or None if every attempt failed.
-        Distinguishing None from an empty DataFrame lets the caller retry only the failures.
+        yfinance does NOT raise on HTTP errors — it logs and returns None — so we must
+        treat None as a retryable failure, not as a successful "no activity" result.
+        An EMPTY DataFrame is a valid "no insider activity" result and short-circuits.
+        Returns the DataFrame on success (possibly empty), or None if every attempt failed.
         '''
         for attempt in range(max_attempts):
             try:
-                data = yf.Ticker(ticker).insider_transactions
-                # yfinance returns None for some tickers without raising; treat as a soft miss
-                return data
+                data = yf.Ticker(ticker, session=_YF_SESSION).insider_transactions
+                # Only an actual DataFrame (even an empty one) counts as success
+                if data is not None:
+                    return data
             except Exception:
-                if attempt == max_attempts - 1:
-                    return None
+                pass
+            if attempt < max_attempts - 1:
                 # Exponential backoff with jitter: ~2s, 4s, 8s
                 time.sleep((2 ** (attempt + 1)) + random.random())
         return None
@@ -491,20 +509,21 @@ class DataProvider:
             if insider_data is None:
                 failed_tickers.append(len(rows) - 1)  # index of this row in `rows`
 
-            # Baseline pacing — keeps us comfortably under Yahoo's per-minute cap
-            time.sleep(0.3)
+            # Baseline pacing — Yahoo's quoteSummary endpoint allows ~60-80 req/min on the free tier;
+            # 1.5s/request keeps us at ~40 req/min, well under the threshold.
+            time.sleep(1.5)
 
         # Second pass — give Yahoo a long cooldown then retry only the rows that fully failed
         if failed_tickers:
             tqdm.write(f'Retrying {len(failed_tickers)} insider fetches after rate-limit cooldown...')
-            time.sleep(30)
+            time.sleep(60)
             for idx in tqdm(failed_tickers, desc='Retrying Insider Activity'):
                 ticker = rows[idx]['Ticker']
                 insider_data = self._fetch_insider_with_retry(ticker)
                 net_shares, insider_score = self._score_insider_data(insider_data)
                 rows[idx]['Net_Insider_Shares'] = net_shares
                 rows[idx]['Insider_Score'] = insider_score
-                time.sleep(0.5)
+                time.sleep(2.0)
 
         return pd.DataFrame(rows)
 
@@ -855,7 +874,7 @@ class DataProvider:
             Options data with Expiration, ATM_Strike, Implied Volatility (dict)
         '''
         # Search for options expiries
-        symbol = yf.Ticker(ticker)
+        symbol = yf.Ticker(ticker, session=_YF_SESSION)
         expirations = symbol.options
 
         # Check if there are options
