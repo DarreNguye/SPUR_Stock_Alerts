@@ -1,5 +1,7 @@
 import pandas as pd
 import os
+import time
+import random
 from datetime import datetime, timedelta
 from tqdm import tqdm
 import json
@@ -414,11 +416,56 @@ class DataProvider:
             if db is not None:
                 db.close()
 
+    def _fetch_insider_with_retry(self, ticker, max_attempts=4):
+        '''
+        Fetch yfinance insider_transactions with exponential backoff on Yahoo 429s.
+        Returns the DataFrame on success (which may be empty), or None if every attempt failed.
+        Distinguishing None from an empty DataFrame lets the caller retry only the failures.
+        '''
+        for attempt in range(max_attempts):
+            try:
+                data = yf.Ticker(ticker).insider_transactions
+                # yfinance returns None for some tickers without raising; treat as a soft miss
+                return data
+            except Exception:
+                if attempt == max_attempts - 1:
+                    return None
+                # Exponential backoff with jitter: ~2s, 4s, 8s
+                time.sleep((2 ** (attempt + 1)) + random.random())
+        return None
+
+    def _score_insider_data(self, insider_data):
+        '''
+        Compute (net_shares, insider_score) from a yfinance insider_transactions DataFrame.
+        Returns (0, 0) for None / empty / missing-columns inputs.
+        '''
+        if insider_data is None or insider_data.empty or 'Shares' not in insider_data.columns:
+            return 0, 0
+
+        shares = pd.to_numeric(insider_data['Shares'], errors='coerce').fillna(0)
+
+        # Determine buy/sell direction from the Transaction column when available
+        if 'Transaction' in insider_data.columns:
+            txn = insider_data['Transaction'].astype(str).str.lower()
+            buy_mask = txn.str.contains('purchase', na=False)
+            sell_mask = txn.str.contains('sale', na=False) | txn.str.contains('sell', na=False)
+            net_shares = int(shares[buy_mask].sum() - shares[sell_mask].sum())
+        else:
+            # Fallback: assume already signed
+            net_shares = int(shares.sum())
+
+        return net_shares, (1 if net_shares > 0 else 0)
+
     def fetch_insider_trading(self, tickers):
         '''
         Fetches insider trading data for tickers and computes NET share buying.
         yfinance's insider_transactions 'Shares' column is unsigned; direction is in 'Transaction'
         (e.g. "Purchase", "Sale"). Summing 'Shares' alone gives total volume, not net flow.
+
+        Yahoo Finance rate-limits aggressively (HTTP 429). We pace requests with a small baseline
+        sleep, retry each ticker up to 4x with exponential backoff, then do a second cooldown pass
+        over any tickers that failed every retry on the first pass.
+
         Parameters:
             tickers: List of (index, pandas.Series) tuples from DataFrame.iterrows()
         Return:
@@ -427,43 +474,37 @@ class DataProvider:
 
         # Store
         rows = []
+        # Track tickers whose every retry attempt failed (likely rate-limited) so we can revisit them
+        failed_tickers = []
 
-        # Fetch insider trading data
-        for _, row in tqdm(tickers, total=len(tickers), desc = 'Fetching Insider Activity'):
+        # First pass — fetch every ticker with retry-on-429 and a baseline pace
+        for _, row in tqdm(tickers, total=len(tickers), desc='Fetching Insider Activity'):
             ticker = row['Ticker']
-            insider_score = 0
-            net_shares = 0
+            insider_data = self._fetch_insider_with_retry(ticker)
+            net_shares, insider_score = self._score_insider_data(insider_data)
 
-            try:
-                stock = yf.Ticker(ticker)
-                insider_data = stock.insider_transactions
-
-                # Check if there is insider trading data
-                if insider_data is not None and not insider_data.empty and 'Shares' in insider_data.columns:
-                    shares = pd.to_numeric(insider_data['Shares'], errors='coerce').fillna(0)
-
-                    # Determine buy/sell direction from the Transaction column when available
-                    if 'Transaction' in insider_data.columns:
-                        txn = insider_data['Transaction'].astype(str).str.lower()
-                        buy_mask = txn.str.contains('purchase', na=False)
-                        sell_mask = txn.str.contains('sale', na=False) | txn.str.contains('sell', na=False)
-                        net_shares = int(shares[buy_mask].sum() - shares[sell_mask].sum())
-                    else:
-                        # Fallback: assume already signed
-                        net_shares = int(shares.sum())
-
-                    if net_shares > 0:
-                        insider_score = 1
-
-            # Skip on exception
-            except Exception:
-                pass
-
-            # Convert row to dictionary
             row_dict = row.to_dict()
             row_dict['Net_Insider_Shares'] = net_shares
             row_dict['Insider_Score'] = insider_score
             rows.append(row_dict)
+
+            if insider_data is None:
+                failed_tickers.append(len(rows) - 1)  # index of this row in `rows`
+
+            # Baseline pacing — keeps us comfortably under Yahoo's per-minute cap
+            time.sleep(0.3)
+
+        # Second pass — give Yahoo a long cooldown then retry only the rows that fully failed
+        if failed_tickers:
+            tqdm.write(f'Retrying {len(failed_tickers)} insider fetches after rate-limit cooldown...')
+            time.sleep(30)
+            for idx in tqdm(failed_tickers, desc='Retrying Insider Activity'):
+                ticker = rows[idx]['Ticker']
+                insider_data = self._fetch_insider_with_retry(ticker)
+                net_shares, insider_score = self._score_insider_data(insider_data)
+                rows[idx]['Net_Insider_Shares'] = net_shares
+                rows[idx]['Insider_Score'] = insider_score
+                time.sleep(0.5)
 
         return pd.DataFrame(rows)
 

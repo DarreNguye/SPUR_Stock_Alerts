@@ -1,0 +1,32 @@
+# SPUR Stock Alerts — cron schedule (Eastern Time)
+#
+# Install:   crontab spur.cron
+# Verify:    crontab -l
+# Tail logs: tail -f $LOG_DIR/scan.log
+#
+# CRON_TZ is honored by Vixie cron / cronie (Debian, Ubuntu, RHEL, Amazon Linux).
+# It is NOT honored by macOS launchd-cron. On macOS or stripped-down BusyBox,
+# either set the VM's system timezone with:
+#     sudo timedatectl set-timezone America/New_York
+# and remove the CRON_TZ line, or use systemd timers instead.
+
+CRON_TZ=America/New_York
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# ---- Edit these three paths for your VM ----
+PROJECT_DIR=/home/USER/SPUR_Stock_Alerts
+PYTHON=/home/USER/SPUR_Stock_Alerts/.venv/bin/python
+LOG_DIR=/home/USER/SPUR_Stock_Alerts/logs
+
+# Live scan — weekdays at 10:00 ET.
+# scan loops every 60s until market close, then auto-runs daily prep itself,
+# so the 23:00 dprep below is a safety net (idempotent if run twice).
+0 10 * * 1-5  cd $PROJECT_DIR && $PYTHON main.py --mode scan  >> $LOG_DIR/scan.log  2>&1
+
+# Daily prep — every day at 23:00 ET. Refreshes price cache + thresholds.
+0 23 * * *    cd $PROJECT_DIR && $PYTHON main.py --mode dprep >> $LOG_DIR/dprep.log 2>&1
+
+# Monthly prep — 1st of every month at 22:00 ET. Rebuilds universe via WRDS + yfinance.
+0 22 1 * *    cd $PROJECT_DIR && $PYTHON main.py --mode mprep >> $LOG_DIR/mprep.log 2>&1
