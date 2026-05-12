@@ -158,58 +158,168 @@ class DataProvider:
 
     def universe_query(self):
         '''
-        Constructs an SQL query for TTM P/E, NTM P/E, Analyst Targets, and Industry P/E
+        Constructs an SQL query for TTM P/E, NTM P/E, Analyst Targets, and Industry P/E.
+
+        Data sources by signal:
+        - Current TTM P/E: live current_price (comp.secd) / sum of last 4 reported quarterly EPS
+          from comp.fundq (epspxq). This is fresher than wrdsapps.firm_ratio, which is rebuilt
+          on a monthly batch and can lag earnings by 4-8 weeks.
+        - Historical TTM P/E percentile: wrdsapps.firm_ratio.pe_exi (kept for the historical
+          threshold because its monthly cadence and consistent methodology are appropriate there).
+        - Current NTM P/E: current_price / IBES FY1 mean EPS estimate (statsum_epsus, fpi='1').
+          wrdsapps.firm_ratio has no forward P/E column.
+        - Historical NTM P/E percentile: per-month IBES FY1 estimate paired with that month's
+          last close from comp.secd.
+        - Industry percentiles: restricted to the large-cap MarketCapScreen universe.
+        - IBES recency filter is 120 days (statpers is monthly; 90d sat right at the boundary).
         Parameters:
             None
         Return:
             SQL query (str)
         '''
         start_date = (datetime.today() - timedelta(days=self.lookback_years * 365)).strftime('%Y-%m-%d')
-        
+        # IBES summary tables update monthly on the third Thursday — 120 days = 3-4 statpers periods
+        ibes_recent_date = (datetime.today() - timedelta(days=120)).strftime('%Y-%m-%d')
+        # 18 months back guarantees 4 reported quarters are visible even with reporting lag
+        eighteen_months_ago = (datetime.today() - timedelta(days=545)).strftime('%Y-%m-%d')
+
         return f'''
             WITH LatestUSDate AS (
-                SELECT MAX(datadate) as max_date 
-                FROM comp.secd 
-                WHERE fic = 'USA' AND tpci = '0' 
+                SELECT MAX(datadate) as max_date
+                FROM comp.secd
+                WHERE fic = 'USA' AND tpci = '0'
                 AND prccd IS NOT NULL AND cshoc IS NOT NULL
             ),
             MarketCapScreen AS (
                 SELECT DISTINCT tic AS ticker, prccd AS current_price
                 FROM comp.secd
                 WHERE datadate = (SELECT max_date FROM LatestUSDate)
-                AND fic = 'USA' AND tpci = '0' 
+                AND fic = 'USA' AND tpci = '0'
                 AND (prccd * cshoc) > {self.min_market_cap}
             ),
-            HistoricalPE AS (
-                SELECT ticker,
-                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_exi) as ttm_thresh,
-                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_inc) as ntm_thresh
-                FROM wrdsapps.firm_ratio
-                WHERE public_date >= '{start_date}'
-                GROUP BY ticker
-            ),
-            LatestPE AS (
-                SELECT ticker, pe_exi, pe_inc
+            IndustryMap AS (
+                -- One industry per ticker; deduplicated when a tic maps to multiple gvkeys
+                SELECT ticker, industry_code
                 FROM (
-                    SELECT ticker, pe_exi, pe_inc,
-                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY public_date DESC) as rn
-                    FROM wrdsapps.firm_ratio
+                    SELECT s.tic AS ticker,
+                           SUBSTRING(c.sic, 1, 2) AS industry_code,
+                           ROW_NUMBER() OVER (PARTITION BY s.tic ORDER BY s.gvkey) as rn
+                    FROM comp.secd s
+                    JOIN comp.company c ON s.gvkey = c.gvkey
+                    WHERE s.datadate = (SELECT max_date FROM LatestUSDate)
+                    AND c.sic IS NOT NULL
                 ) tmp
                 WHERE rn = 1
             ),
-            IndustryMap AS (
-                SELECT DISTINCT s.tic AS ticker, SUBSTRING(c.sic, 1, 2) AS industry_code
-                FROM comp.secd s
-                JOIN comp.company c ON s.gvkey = c.gvkey
-                WHERE s.datadate = (SELECT max_date FROM LatestUSDate)
+            HistoricalTTMPE AS (
+                SELECT ticker,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY pe_exi) as ttm_thresh
+                FROM wrdsapps.firm_ratio
+                WHERE public_date >= '{start_date}'
+                AND pe_exi IS NOT NULL
+                AND pe_exi > 0
+                GROUP BY ticker
             ),
-            -- UPDATED: Now uses your dynamic pe_percentile variable instead of 0.5
-            IndustryPE AS (
+            LatestTTMEPS AS (
+                -- Sum of last 4 reported quarters of diluted EPS (excl. extraordinary items)
+                -- comp.fundq updates per filing (~1-2 weeks after a 10-Q), much fresher than firm_ratio's monthly batch.
+                SELECT ticker, SUM(epspxq) AS ttm_eps
+                FROM (
+                    SELECT ticker, datadate, epspxq,
+                           ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY datadate DESC) AS qrn
+                    FROM (
+                        -- Dedupe rows when the same (ticker, datadate) appears under both INDL and FS
+                        SELECT tic AS ticker, datadate, epspxq,
+                               ROW_NUMBER() OVER (PARTITION BY tic, datadate ORDER BY indfmt) AS prn
+                        FROM comp.fundq
+                        WHERE datafmt = 'STD' AND popsrc = 'D' AND consol = 'C'
+                          AND indfmt IN ('INDL', 'FS')
+                          AND epspxq IS NOT NULL
+                          AND datadate >= '{eighteen_months_ago}'
+                    ) dedup
+                    WHERE prn = 1
+                ) ranked
+                WHERE qrn <= 4
+                GROUP BY ticker
+                HAVING COUNT(*) = 4 AND SUM(epspxq) > 0
+            ),
+            LatestTTMPE AS (
+                -- Fresh current TTM P/E using today's price + most-recent 4 quarters of reported EPS.
+                -- Removes dependency on firm_ratio's monthly publication cadence for the latest snapshot.
+                SELECT m.ticker, (m.current_price / NULLIF(e.ttm_eps, 0)) AS pe_exi
+                FROM MarketCapScreen m
+                JOIN LatestTTMEPS e ON m.ticker = e.ticker
+                WHERE e.ttm_eps > 0
+            ),
+            LatestForwardEPS AS (
+                -- IBES FY1 mean EPS estimate (used as forward EPS for NTM P/E)
+                SELECT oftic as ticker, meanest as fwd_eps
+                FROM (
+                    SELECT oftic, meanest,
+                           ROW_NUMBER() OVER (PARTITION BY oftic ORDER BY statpers DESC) as rn
+                    FROM ibes.statsum_epsus
+                    WHERE fpi = '1'
+                    AND measure = 'EPS'
+                    AND statpers >= '{ibes_recent_date}'
+                    AND meanest IS NOT NULL
+                    AND meanest > 0
+                ) tmp
+                WHERE rn = 1
+            ),
+            MonthEndPrices AS (
+                -- Last trading day's close per ticker-month, used for historical NTM P/E reconstruction
+                SELECT ticker, month_start, price
+                FROM (
+                    SELECT
+                        tic AS ticker,
+                        DATE_TRUNC('month', datadate)::date as month_start,
+                        prccd as price,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY tic, DATE_TRUNC('month', datadate)
+                            ORDER BY datadate DESC
+                        ) as rn
+                    FROM comp.secd
+                    WHERE datadate >= '{start_date}'
+                    AND fic = 'USA' AND tpci = '0'
+                    AND prccd IS NOT NULL
+                ) tmp
+                WHERE rn = 1
+            ),
+            HistoricalNTMPE AS (
+                -- Per-ticker percentile of historical forward P/E = month_end_price / IBES FY1 mean EPS
+                SELECT
+                    s.oftic as ticker,
+                    percentile_cont({self.pe_percentile}) WITHIN GROUP (
+                        ORDER BY (mp.price / NULLIF(s.meanest, 0))
+                    ) as ntm_thresh
+                FROM ibes.statsum_epsus s
+                JOIN MonthEndPrices mp
+                    ON s.oftic = mp.ticker
+                    AND DATE_TRUNC('month', s.statpers)::date = mp.month_start
+                WHERE s.fpi = '1'
+                AND s.measure = 'EPS'
+                AND s.statpers >= '{start_date}'
+                AND s.meanest > 0
+                GROUP BY s.oftic
+            ),
+            IndustryTTMPE AS (
+                -- Industry pe_percentile threshold computed across the large-cap universe only
                 SELECT i.industry_code,
-                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY l.pe_exi) as ind_ttm_thresh,
-                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY l.pe_inc) as ind_ntm_thresh
-                FROM LatestPE l
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (ORDER BY l.pe_exi) as ind_ttm_thresh
+                FROM LatestTTMPE l
                 JOIN IndustryMap i ON l.ticker = i.ticker
+                JOIN MarketCapScreen m ON l.ticker = m.ticker
+                GROUP BY i.industry_code
+            ),
+            IndustryNTMPE AS (
+                -- Industry pe_percentile threshold of current NTM P/E across the large-cap universe
+                SELECT i.industry_code,
+                       percentile_cont({self.pe_percentile}) WITHIN GROUP (
+                           ORDER BY (m.current_price / NULLIF(f.fwd_eps, 0))
+                       ) as ind_ntm_thresh
+                FROM LatestForwardEPS f
+                JOIN MarketCapScreen m ON f.ticker = m.ticker
+                JOIN IndustryMap i ON f.ticker = i.ticker
                 GROUP BY i.industry_code
             ),
             AnalystTargets AS (
@@ -218,50 +328,55 @@ class DataProvider:
                     SELECT oftic, meanptg,
                            ROW_NUMBER() OVER (PARTITION BY oftic ORDER BY statpers DESC) as rn
                     FROM ibes.ptgsum
+                    WHERE statpers >= '{ibes_recent_date}'
+                    AND meanptg IS NOT NULL
+                    AND meanptg > 0
                 ) tmp
                 WHERE rn = 1
             ),
             ScoredWRDS AS (
                SELECT m.ticker,
-                       l.pe_exi, 
-                       l.pe_inc, 
+                       l.pe_exi as ttm_pe,
+                       (m.current_price / NULLIF(f.fwd_eps, 0)) as ntm_pe,
                        h.ttm_thresh,
-                       h.ntm_thresh,
+                       hn.ntm_thresh,
                        ind.ind_ttm_thresh,
-                       ind.ind_ntm_thresh,
-                       ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) as discount_pct,
-                       
-                       (CASE WHEN l.pe_exi <= h.ttm_thresh THEN 1 ELSE 0 END) as ttm_score,
-                       (CASE WHEN l.pe_inc <= h.ntm_thresh THEN 1 ELSE 0 END) as ntm_score,
-                       (CASE WHEN ((a.meanptg - m.current_price) / NULLIF(a.meanptg, 0)) >= {self.analyst_discount} THEN 1 ELSE 0 END) as analyst_score,
-                       
-                       -- UPDATED: Checking against the new dynamic threshold aliases
-                       (CASE WHEN l.pe_exi <= ind.ind_ttm_thresh THEN 1 ELSE 0 END) as ind_ttm_score,
-                       (CASE WHEN l.pe_inc <= ind.ind_ntm_thresh THEN 1 ELSE 0 END) as ind_ntm_score
-                       
+                       indn.ind_ntm_thresh,
+                       -- Upside relative to the current price (not the target)
+                       ((a.meanptg - m.current_price) / NULLIF(m.current_price, 0)) as discount_pct,
+
+                       CASE WHEN l.pe_exi <= h.ttm_thresh THEN 1 ELSE 0 END as ttm_score,
+                       CASE WHEN (m.current_price / NULLIF(f.fwd_eps, 0)) <= hn.ntm_thresh THEN 1 ELSE 0 END as ntm_score,
+                       CASE WHEN ((a.meanptg - m.current_price) / NULLIF(m.current_price, 0)) >= {self.analyst_discount} THEN 1 ELSE 0 END as analyst_score,
+                       CASE WHEN l.pe_exi <= ind.ind_ttm_thresh THEN 1 ELSE 0 END as ind_ttm_score,
+                       CASE WHEN (m.current_price / NULLIF(f.fwd_eps, 0)) <= indn.ind_ntm_thresh THEN 1 ELSE 0 END as ind_ntm_score
+
                 FROM MarketCapScreen m
-                LEFT JOIN HistoricalPE h ON m.ticker = h.ticker
-                LEFT JOIN LatestPE l ON m.ticker = l.ticker
+                LEFT JOIN HistoricalTTMPE h ON m.ticker = h.ticker
+                LEFT JOIN HistoricalNTMPE hn ON m.ticker = hn.ticker
+                LEFT JOIN LatestTTMPE l ON m.ticker = l.ticker
+                LEFT JOIN LatestForwardEPS f ON m.ticker = f.ticker
                 LEFT JOIN AnalystTargets a ON m.ticker = a.ticker
                 LEFT JOIN IndustryMap imap ON m.ticker = imap.ticker
-                LEFT JOIN IndustryPE ind ON imap.industry_code = ind.industry_code
+                LEFT JOIN IndustryTTMPE ind ON imap.industry_code = ind.industry_code
+                LEFT JOIN IndustryNTMPE indn ON imap.industry_code = indn.industry_code
             )
-            SELECT ticker as "Ticker", 
-                   (ttm_score + ntm_score + COALESCE(analyst_score, 0) + ind_ttm_score + ind_ntm_score) as "Fundamentals_Score",
+            SELECT ticker as "Ticker",
+                   (ttm_score + ntm_score + analyst_score + ind_ttm_score + ind_ntm_score) as "Fundamentals_Score",
                    ttm_score as "TTM_Score",
                    ntm_score as "NTM_Score",
                    ind_ttm_score as "Ind_TTM_Score",
                    ind_ntm_score as "Ind_NTM_Score",
-                   COALESCE(analyst_score, 0) as "Analyst_Score",
-                   pe_exi as "Raw_TTM_PE",
+                   analyst_score as "Analyst_Score",
+                   ttm_pe as "Raw_TTM_PE",
                    ttm_thresh as "TTM_Threshold",
-                   ind_ttm_thresh as "Ind_TTM_Threshold", -- Renamed output column
-                   pe_inc as "Raw_NTM_PE",
+                   ind_ttm_thresh as "Ind_TTM_Threshold",
+                   ntm_pe as "Raw_NTM_PE",
                    ntm_thresh as "NTM_Threshold",
-                   ind_ntm_thresh as "Ind_NTM_Threshold", -- Renamed output column
+                   ind_ntm_thresh as "Ind_NTM_Threshold",
                    discount_pct as "Raw_Discount_pct"
             FROM ScoredWRDS
-            WHERE (ttm_score + ntm_score + COALESCE(analyst_score, 0) + ind_ttm_score + ind_ntm_score) >= {self.req_score - 3}
+            WHERE (ttm_score + ntm_score + analyst_score + ind_ttm_score + ind_ntm_score) >= {self.req_score - 3}
         '''
 
     def fetch_fundamental_tickers(self, sql_query):
@@ -301,42 +416,55 @@ class DataProvider:
 
     def fetch_insider_trading(self, tickers):
         '''
-        Fetches insider trading data for tickers
+        Fetches insider trading data for tickers and computes NET share buying.
+        yfinance's insider_transactions 'Shares' column is unsigned; direction is in 'Transaction'
+        (e.g. "Purchase", "Sale"). Summing 'Shares' alone gives total volume, not net flow.
         Parameters:
-            tickers: Tickers to ensure are tradable (array str)
+            tickers: List of (index, pandas.Series) tuples from DataFrame.iterrows()
         Return:
             Net insider shares and a score (pandas.DataFrame)
         '''
 
         # Store
         rows = []
-        
+
         # Fetch insider trading data
         for _, row in tqdm(tickers, total=len(tickers), desc = 'Fetching Insider Activity'):
             ticker = row['Ticker']
             insider_score = 0
-            net_shares = 0 
-            
+            net_shares = 0
+
             try:
                 stock = yf.Ticker(ticker)
                 insider_data = stock.insider_transactions
-                
+
                 # Check if there is insider trading data
-                if insider_data is not None and not insider_data.empty:
-                    net_shares = insider_data['Shares'].sum() 
+                if insider_data is not None and not insider_data.empty and 'Shares' in insider_data.columns:
+                    shares = pd.to_numeric(insider_data['Shares'], errors='coerce').fillna(0)
+
+                    # Determine buy/sell direction from the Transaction column when available
+                    if 'Transaction' in insider_data.columns:
+                        txn = insider_data['Transaction'].astype(str).str.lower()
+                        buy_mask = txn.str.contains('purchase', na=False)
+                        sell_mask = txn.str.contains('sale', na=False) | txn.str.contains('sell', na=False)
+                        net_shares = int(shares[buy_mask].sum() - shares[sell_mask].sum())
+                    else:
+                        # Fallback: assume already signed
+                        net_shares = int(shares.sum())
+
                     if net_shares > 0:
                         insider_score = 1
 
-            # Skip on excetion        
+            # Skip on exception
             except Exception:
-                pass 
-            
+                pass
+
             # Convert row to dictionary
             row_dict = row.to_dict()
             row_dict['Net_Insider_Shares'] = net_shares
             row_dict['Insider_Score'] = insider_score
             rows.append(row_dict)
-                
+
         return pd.DataFrame(rows)
 
     def filter_tradable_assets(self, tickers):
@@ -406,10 +534,10 @@ class DataProvider:
         formatted_df = self.format_prices_data(prices_dfs)
         formatted_df.sort_values(['Ticker', 'Date'], inplace=True)
 
-        # Keep only data within the lookback period 
-        cutoff = datetime.today() - timedelta(days=self.lookback_years * 365)
+        # Keep only data within the lookback period (normalize to midnight to avoid time-of-day boundary drops)
+        cutoff = pd.Timestamp(datetime.today().date()) - timedelta(days=self.lookback_years * 365)
         formatted_df = formatted_df[formatted_df['Date'] >= cutoff]
-            
+
         # Cache data
         os.makedirs(os.path.dirname(self.prices_cache_file), exist_ok = True)
         formatted_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
@@ -454,12 +582,14 @@ class DataProvider:
         end_date = datetime.today() - timedelta(days=1)
         last_cache_date = history_df['Date'].max()
         start_date = end_date - timedelta(days=self.lookback_years * 365)
-        
+
         new_dfs = []
 
-        # Fetch updated data for existing tickers (start one day after last cache to avoid re-fetching)
-        if existing_tickers and last_cache_date.date() < end_date.date():
-            fetch_start = last_cache_date + timedelta(days=1)
+        # Fetch updated data for existing tickers. Overlap by re-fetching the last cached day so any
+        # corrections (or partial-day bars from a prior aborted run) are picked up; drop_duplicates
+        # below dedupes on (Date, Ticker).
+        if existing_tickers and last_cache_date.date() <= end_date.date():
+            fetch_start = last_cache_date
             print(f"Updating {len(existing_tickers)} existing tickers from {fetch_start.strftime('%Y-%m-%d')}...")
             updated_existing_dfs = self.fetch_prices_data(existing_tickers, fetch_start, end_date)
             new_dfs.extend(updated_existing_dfs)
@@ -482,8 +612,8 @@ class DataProvider:
         updated_df = updated_df[updated_df['Ticker'].isin(current_tickers)]
         updated_df.sort_values(['Ticker', 'Date'], inplace=True)
 
-        # Keep only data within the lookback period
-        cutoff = datetime.today() - timedelta(days=self.lookback_years * 365)
+        # Keep only data within the lookback period (normalize to midnight to avoid time-of-day boundary drops)
+        cutoff = pd.Timestamp(datetime.today().date()) - timedelta(days=self.lookback_years * 365)
         updated_df = updated_df[updated_df['Date'] >= cutoff]
         updated_df.to_parquet(self.prices_cache_file, engine = 'pyarrow', index = False)
 
@@ -710,10 +840,17 @@ class DataProvider:
             calls['distance_from_price'] = abs(calls['strike'] - live_price)
             atm_row = calls.loc[calls['distance_from_price'].idxmin()]
 
+            iv = atm_row['impliedVolatility']
+
+            # Validate IV — yfinance returns 0.0 or NaN for illiquid strikes
+            if iv is None or pd.isna(iv) or iv <= 0:
+                tqdm.write(f'Invalid IV for {ticker} (got {iv}); skipping.')
+                return None
+
             return {
                 'Expiration': closest_date,
                 'ATM_Strike': atm_row['strike'],
-                'Implied_Volatility': atm_row['impliedVolatility']
+                'Implied_Volatility': iv
             }
 
         except Exception as e:
