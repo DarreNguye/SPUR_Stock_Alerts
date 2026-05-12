@@ -7,6 +7,7 @@ wrds==3.3.0
 pytz==2024.2
 numpy==1.26.4
 yfinance==0.2.50
+curl_cffi==0.7.4
 streamlit==1.40.2
 google-genai==0.3.0
 pandas_market_calendars==4.4.2
