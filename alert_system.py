@@ -205,22 +205,47 @@ class AlertSystem:
                 live_iv_df = self.data.fetch_live_volatilites(strict_drops_df)
                 high_iv_df = analyzer.find_high_iv(live_iv_df)
 
+                # Identify which drop_tickers had IV fetch failures (Implied_Volatility = None
+                # in live_iv_df but dropped from high_iv_df). These are likely Yahoo 429s or
+                # illiquid options — not scoring failures.
+                failed_iv_tickers = []
+                if not live_iv_df.empty and 'Implied_Volatility' in live_iv_df.columns:
+                    failed_iv_tickers = live_iv_df.loc[
+                        live_iv_df['Implied_Volatility'].isna(), 'Ticker'
+                    ].tolist()
+
+                # Tickers that actually scored above the IV threshold (IV_Score == 1)
+                high_iv_tickers = []
+                if not high_iv_df.empty and 'IV_Score' in high_iv_df.columns:
+                    high_iv_tickers = high_iv_df.loc[high_iv_df['IV_Score'] == 1, 'Ticker'].tolist()
+
                 # Scoring and filtering
                 alerts_df = analyzer.calculate_scores(universe_df, high_iv_df, self.config.req_score)
                 new_alerts_df = self.filter_new_alerts(alerts_df, old_alerts)
 
                 # Add in valuation analysis -- TEMPRORARILY REMOVED
                 # enriched_df = valuation_agent.analyze_tickers(self.config.prompt, self.config.temperature, new_alerts_df)
-                
+
                 # Send alerts
                 self.alert_manager.process_alerts(new_alerts_df)
 
-                # Update stats if there is meaningful information
-                if not drops_df.empty or not high_iv_df.empty or not new_alerts_df.empty:
+                # Compute the actual scored-drop list once (drops_df contains the FULL universe with
+                # a per-ticker score, so the previous unfiltered ['Ticker'].tolist() was logging
+                # the entire universe every minute — which is why Drop_Tickers in system_data
+                # looked "full" even on quiet days)
+                drop_tickers = []
+                if not drops_df.empty and 'Returns_Score' in drops_df.columns:
+                    drop_tickers = drops_df.loc[drops_df['Returns_Score'] == 1, 'Ticker'].tolist()
+
+                # Only persist a row when something meaningful happened: a real drop, a high-IV
+                # match, an IV fetch failure, or an alert. Avoids polluting system_data with an
+                # empty row every minute.
+                if drop_tickers or high_iv_tickers or failed_iv_tickers or not new_alerts_df.empty:
                     daily_stats.data.append({
                         'Time': now.strftime('%Y-%m-%d %H:%M:%S'),
-                        'Drop_Tickers': drops_df['Ticker'].tolist() if not drops_df.empty else [],
-                        'High_IV_Tickers': high_iv_df['Ticker'].tolist() if not high_iv_df.empty else [],
+                        'Drop_Tickers': drop_tickers,
+                        'High_IV_Tickers': high_iv_tickers,
+                        'Failed_IV_Tickers': failed_iv_tickers,
                         'Alerts': new_alerts_df.to_dict(orient='records') if not new_alerts_df.empty else []
                     })
                 

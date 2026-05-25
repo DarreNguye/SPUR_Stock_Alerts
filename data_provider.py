@@ -830,27 +830,32 @@ class DataProvider:
         
     def fetch_live_volatilites(self, live_prices_df):
         '''
-        Fetch live implied volatility data for a ATM call option expiring 30 days from now for a list of tickers
+        Fetch live implied volatility data for an ATM call option expiring ~30 days from now for a list of tickers.
+        Prints a per-cycle failure summary so silent yfinance options failures are visible.
         Parameters:
             live_prices_df: Tickers and live price data (pandas.DataFrame)
         Return:
-            Ticker and implied volsatility (pandas.DataFrame)
+            Ticker, live price, prev close, and IV columns (pandas.DataFrame). Tickers whose IV
+            fetch fails get Implied_Volatility = None so the caller can drop them later.
         '''
 
         # Check if there are drops
         if live_prices_df is None or live_prices_df.empty:
             print('No tickers provided for live IV.')
             return pd.DataFrame()
-        
+
         # Store data
         final_rows = []
+        # Track failure modes so we know whether IV breakdowns are rate-limit issues, illiquid
+        # strikes, or no options listed at all
+        counts = {'success': 0, 'no_options': 0, 'fetch_error': 0, 'invalid_iv': 0}
 
-        # Iterate through rows and and fetch implied volatility
-        for _, row in tqdm(live_prices_df.iterrows(), total=len(live_prices_df), desc = 'Fetching Implied Volatility', unit = ' ticker'):
-            iv = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
+        # Iterate through rows and fetch implied volatility
+        for _, row in tqdm(live_prices_df.iterrows(), total=len(live_prices_df), desc='Fetching Implied Volatility', unit=' ticker'):
+            iv, reason = self.fetch_live_volatility(row['Ticker'], row['Live_Price'])
+            counts[reason] += 1
+
             row_dict = row.to_dict()
-
-            # Check if there implied volatility exists
             if iv:
                 row_dict.update(iv)
             else:
@@ -859,63 +864,113 @@ class DataProvider:
                     'ATM_Strike': None,
                     'Implied_Volatility': None
                 })
-            
+
             final_rows.append(row_dict)
-        
+
+        # Summarize per-cycle so the log shows whether IV is broadly working
+        print(
+            f"IV fetch summary: {counts['success']}/{len(live_prices_df)} succeeded "
+            f"(no_options={counts['no_options']}, fetch_error={counts['fetch_error']}, "
+            f"invalid_iv={counts['invalid_iv']})"
+        )
+
         return pd.DataFrame(final_rows)
 
-    def fetch_live_volatility(self, ticker, live_price):
+    def fetch_live_volatility(self, ticker, live_price, max_attempts=2):
         '''
-        Helper function to fetch live implied volatility data for a ATM call option expiring 30 days from now for a ticker
+        Helper function to fetch live implied volatility data for a ~30-day ATM call option.
+        Retries transient yfinance/Yahoo failures up to max_attempts with a short backoff.
         Parameters:
            ticker: Ticker to pull data for (str)
            live_price: Live price (float)
+           max_attempts: How many times to retry a failed options fetch (int)
         Return:
-            Options data with Expiration, ATM_Strike, Implied Volatility (dict)
+            (dict | None, reason_str) — dict with Expiration/ATM_Strike/Implied_Volatility on success,
+            or None plus a reason in {'no_options', 'fetch_error', 'invalid_iv', 'success'}.
         '''
-        # Search for options expiries
-        symbol = yf.Ticker(ticker, session=_YF_SESSION)
-        expirations = symbol.options
 
-        # Check if there are options
+        # Guard against bad live_price input
+        if live_price is None or pd.isna(live_price) or live_price <= 0:
+            tqdm.write(f'Invalid live_price for {ticker} ({live_price}); skipping IV.')
+            return None, 'fetch_error'
+
+        # Try to get the options expirations; retry on transient errors. yfinance returns
+        # an empty tuple when Yahoo blocks the request, and an exception on network/parsing errors.
+        expirations = ()
+        last_exc = None
+        for attempt in range(max_attempts):
+            try:
+                symbol = yf.Ticker(ticker, session=_YF_SESSION)
+                expirations = symbol.options or ()
+                if expirations:
+                    break  # success
+            except Exception as e:
+                last_exc = e
+            if attempt < max_attempts - 1:
+                time.sleep(1.5 + random.random())
+
         if not expirations:
+            if last_exc is not None:
+                tqdm.write(f'Options fetch failed for {ticker} after {max_attempts} attempts: {last_exc}')
+                return None, 'fetch_error'
             tqdm.write(f'No options available for {ticker}')
-            return None
-        
-        # Find the option with an expiration date closest to 30 days from now
+            return None, 'no_options'
+
+        # Find the expiration closest to 30 days from now
         today = datetime.today()
         closest_date = expirations[0]
         min_diff = float('inf')
         for date_str in expirations:
-            expiration_date = datetime.strptime(date_str, '%Y-%m-%d')
+            try:
+                expiration_date = datetime.strptime(date_str, '%Y-%m-%d')
+            except (ValueError, TypeError):
+                continue
             days_diff = abs((expiration_date - today).days - 30)
-
             if days_diff < min_diff:
                 min_diff = days_diff
                 closest_date = date_str
-        
-        # Pull options data
+
+        # Pull options data, retrying transient errors
+        calls = None
+        last_exc = None
+        for attempt in range(max_attempts):
+            try:
+                chain = symbol.option_chain(closest_date)
+                calls = chain.calls
+                if calls is not None and not calls.empty:
+                    break  # success
+            except Exception as e:
+                last_exc = e
+            if attempt < max_attempts - 1:
+                time.sleep(1.5 + random.random())
+
+        if calls is None or calls.empty:
+            if last_exc is not None:
+                tqdm.write(f'Option chain fetch failed for {ticker} ({closest_date}) after {max_attempts} attempts: {last_exc}')
+            else:
+                tqdm.write(f'Empty calls table for {ticker} ({closest_date})')
+            return None, 'fetch_error'
+
+        # Find ATM strike + IV
         try:
-            calls = symbol.option_chain(closest_date).calls
-            calls['distance_from_price'] = abs(calls['strike'] - live_price)
+            calls = calls.copy()
+            calls['distance_from_price'] = (calls['strike'] - live_price).abs()
             atm_row = calls.loc[calls['distance_from_price'].idxmin()]
-
             iv = atm_row['impliedVolatility']
-
-            # Validate IV — yfinance returns 0.0 or NaN for illiquid strikes
-            if iv is None or pd.isna(iv) or iv <= 0:
-                tqdm.write(f'Invalid IV for {ticker} (got {iv}); skipping.')
-                return None
-
-            return {
-                'Expiration': closest_date,
-                'ATM_Strike': atm_row['strike'],
-                'Implied_Volatility': iv
-            }
-
         except Exception as e:
-            tqdm.write(f'Error fetching options data for {ticker}: {e}')
-            return None
+            tqdm.write(f'Error selecting ATM row for {ticker}: {e}')
+            return None, 'fetch_error'
+
+        # Validate IV — yfinance returns 0.0 or NaN for illiquid strikes
+        if iv is None or pd.isna(iv) or iv <= 0:
+            tqdm.write(f'Invalid IV for {ticker} (got {iv}); skipping.')
+            return None, 'invalid_iv'
+
+        return {
+            'Expiration': closest_date,
+            'ATM_Strike': float(atm_row['strike']),
+            'Implied_Volatility': float(iv)
+        }, 'success'
 
 
 
