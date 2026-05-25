@@ -103,8 +103,8 @@ TO_EMAILS=recipient1@example.com,recipient2@example.com
 | `min_market_cap` | `10,000,000,000` | Minimum market cap for universe inclusion ($10B) |
 | `lookback_years` | `1` | Years of historical price data to use for threshold calculation |
 | `volatility_rolling_window` | `21` | Rolling window (trading days) for historical volatility calculation |
-| `drop_percentile` | `0.0015` | Bottom percentile of a ticker's historical returns used as the drop threshold |
-| `drop_percent` | `0.10` | Minimum absolute intraday drop required to flag a ticker (10%) |
+| `drop_percentile` | `0.005` | Bottom percentile of a ticker's historical returns used as the drop threshold (~bottom 0.5%) |
+| `drop_percent` | `0.05` | Minimum absolute intraday drop required to flag a ticker (5%) |
 | `volatility_percentile` | `0.80` | Top percentile of a ticker's historical volatility used as the IV threshold |
 
 ---

@@ -31,8 +31,8 @@ def main():
         min_market_cap = 10_000_000_000,
         lookback_years = 1,
         volatility_rolling_window = 21,
-        drop_percentile = 0.0015,
-        drop_percent = 0.10,
+        drop_percentile = 0.005,   # bottom 0.5% of historical daily returns (~1.3 days/yr per ticker)
+        drop_percent = 0.05,       # absolute floor: must drop at least 5% intraday
         volatility_percentile = 0.8,
         temperature = 0.1,
         prompt = '''
