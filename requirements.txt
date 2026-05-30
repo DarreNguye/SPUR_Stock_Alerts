@@ -1,9 +1,3 @@
-# Unpinned — install picks the latest compatible version. Floors are set only
-# where we have a known compatibility requirement:
-#   - yfinance>=1.4 : pre-1.4 has a cookie/crumb bug that breaks every
-#                     options/insider call when paired with curl_cffi
-#   - curl_cffi>=0.15 : earlier versions used a cookie format that yfinance
-#                       couldn't read
 pandas
 pyarrow
 alpaca-py
